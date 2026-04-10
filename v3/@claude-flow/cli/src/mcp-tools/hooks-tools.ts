@@ -161,8 +161,13 @@ function generateSimpleEmbedding(text: string, dimension: number = 384): Float32
 
 // ── Runtime routing outcome persistence ──────────────────────────────
 // Closes the learning loop: post-task records outcomes → route loads them.
-
-const ROUTING_OUTCOMES_PATH = join(resolve('.'), '.claude-flow/routing-outcomes.json');
+//
+// Resolved lazily (not as a module-level constant) so it survives Windows
+// MCP launches where process.cwd() at import time may be C:\Windows\System32.
+// See getProjectCwd() in ./types.ts and issue #1577.
+function getRoutingOutcomesPath(): string {
+  return join(getProjectCwd(), '.claude-flow/routing-outcomes.json');
+}
 
 const ROUTING_STOPWORDS = new Set([
   'the','a','an','is','are','was','were','be','been','being','have','has','had',
@@ -194,8 +199,9 @@ function extractKeywords(text: string): string[] {
 
 function loadRoutingOutcomes(): RoutingOutcome[] {
   try {
-    if (existsSync(ROUTING_OUTCOMES_PATH)) {
-      const data = JSON.parse(readFileSync(ROUTING_OUTCOMES_PATH, 'utf-8'));
+    const path = getRoutingOutcomesPath();
+    if (existsSync(path)) {
+      const data = JSON.parse(readFileSync(path, 'utf-8'));
       return data.outcomes || [];
     }
   } catch { /* corrupt file, start fresh */ }
@@ -204,11 +210,12 @@ function loadRoutingOutcomes(): RoutingOutcome[] {
 
 function saveRoutingOutcomes(outcomes: RoutingOutcome[]): void {
   try {
-    const dir = dirname(ROUTING_OUTCOMES_PATH);
+    const path = getRoutingOutcomesPath();
+    const dir = dirname(path);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     // Cap at 500 entries to bound file size
     const capped = outcomes.slice(-500);
-    writeFileSync(ROUTING_OUTCOMES_PATH, JSON.stringify({ outcomes: capped }, null, 2));
+    writeFileSync(path, JSON.stringify({ outcomes: capped }, null, 2));
   } catch { /* non-critical */ }
 }
 
@@ -460,7 +467,7 @@ const MEMORY_DIR = '.claude-flow/memory';
 const MEMORY_FILE = 'store.json';
 
 function getMemoryPath(): string {
-  return resolve(join(MEMORY_DIR, MEMORY_FILE));
+  return join(getProjectCwd(), MEMORY_DIR, MEMORY_FILE);
 }
 
 function loadMemoryStore(): MemoryStore {
@@ -862,7 +869,7 @@ export const hooksPostCommand: MCPTool = {
         const store = loadMemoryStore();
         const key = `cmd-${Date.now()}`;
         store.entries[key] = { key, value: JSON.stringify({ command, exitCode, success }), namespace: 'commands', createdAt: new Date().toISOString() } as any;
-        const memDir = resolve(MEMORY_DIR);
+        const memDir = join(getProjectCwd(), MEMORY_DIR);
         if (!existsSync(memDir)) mkdirSync(memDir, { recursive: true });
         writeFileSync(getMemoryPath(), JSON.stringify(store, null, 2), 'utf-8');
         _storedIn = 'json-store';
@@ -1441,7 +1448,7 @@ export const hooksExplain: MCPTool = {
     let historicalSuccess: number | null = null;
     let historicalNote = 'No historical data yet';
     try {
-      const outcomesPath = join(resolve('.'), '.claude-flow/routing-outcomes.json');
+      const outcomesPath = getRoutingOutcomesPath();
       if (existsSync(outcomesPath)) {
         const data = JSON.parse(readFileSync(outcomesPath, 'utf-8'));
         const outcomes: Array<{ success: boolean }> = data.outcomes || [];
@@ -1496,7 +1503,7 @@ export const hooksPretrain: MCPTool = {
     },
   },
   handler: async (params: Record<string, unknown>) => {
-    const repoPath = resolve((params.path as string) || '.');
+    const repoPath = resolve((params.path as string) || getProjectCwd());
     const depth = (params.depth as string) || 'medium';
     const startTime = performance.now();
 
@@ -1591,7 +1598,7 @@ export const hooksBuildAgents: MCPTool = {
     },
   },
   handler: async (params: Record<string, unknown>) => {
-    const outputDir = resolve((params.outputDir as string) || './agents');
+    const outputDir = resolve((params.outputDir as string) || join(getProjectCwd(), 'agents'));
     const focus = (params.focus as string) || 'all';
     const format = (params.format as string) || 'yaml';
     const persist = params.persist !== false; // Default to true
@@ -1669,8 +1676,10 @@ export const hooksTransfer: MCPTool = {
     { const v = validatePath(sourcePath, 'sourcePath'); if (!v.valid) return { success: false, error: v.error }; }
     if (filter) { const v = validateIdentifier(filter, 'filter'); if (!v.valid) return { success: false, error: v.error }; }
 
-    // Try to load patterns from source project's memory store
-    const sourceMemoryPath = join(resolve(sourcePath), MEMORY_DIR, MEMORY_FILE);
+    // Try to load patterns from source project's memory store.
+    // Resolve relative sourcePath against the project root, not cwd — on
+    // Windows MCP launches cwd may be C:\Windows\System32 (issue #1577).
+    const sourceMemoryPath = join(resolve(getProjectCwd(), sourcePath), MEMORY_DIR, MEMORY_FILE);
     let sourceStore: MemoryStore = { entries: {}, version: '3.0.0' };
 
     try {
@@ -1908,7 +1917,7 @@ export const hooksSessionEnd: MCPTool = {
     // Check for pending-insights.jsonl
     let insightCount = 0;
     try {
-      const insightsPath = resolve(join('.claude-flow', 'data', 'pending-insights.jsonl'));
+      const insightsPath = join(getProjectCwd(), '.claude-flow', 'data', 'pending-insights.jsonl');
       if (existsSync(insightsPath)) {
         const content = readFileSync(insightsPath, 'utf-8').trim();
         insightCount = content ? content.split('\n').length : 0;

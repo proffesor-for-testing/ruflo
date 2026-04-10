@@ -11,8 +11,8 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
-import { join, resolve } from 'path';
-import type { MCPTool } from './types.js';
+import { join } from 'path';
+import { type MCPTool, getProjectCwd } from './types.js';
 import { validateIdentifier } from './validate-input.js';
 
 // Legacy JSON store interface (for migration)
@@ -36,15 +36,15 @@ const LEGACY_MEMORY_FILE = 'store.json';
 const MIGRATION_MARKER = '.migrated-to-sqlite';
 
 function getMemoryDir(): string {
-  return resolve(MEMORY_DIR);
+  return join(getProjectCwd(), MEMORY_DIR);
 }
 
 function getLegacyPath(): string {
-  return resolve(join(MEMORY_DIR, LEGACY_MEMORY_FILE));
+  return join(getProjectCwd(), MEMORY_DIR, LEGACY_MEMORY_FILE);
 }
 
 function getMigrationMarkerPath(): string {
-  return resolve(join(MEMORY_DIR, MIGRATION_MARKER));
+  return join(getProjectCwd(), MEMORY_DIR, MIGRATION_MARKER);
 }
 
 function ensureMemoryDir(): void {
@@ -632,8 +632,10 @@ export const memoryTools: MCPTool[] = [
           } catch { /* scan error */ }
         }
       } else {
-        // Current project only — find by CWD hash
-        const cwd = process.cwd();
+        // Current project only — find by CWD hash.
+        // Use getProjectCwd() so the hash is stable even when process.cwd()
+        // points at System32/ (Windows MCP launches) or '/' (global installs).
+        const cwd = getProjectCwd();
         const projectHash = cwd.replace(/\//g, '-');
         const memDir = join(claudeProjectsDir, projectHash, 'memory');
         if (existsSync(memDir)) {
