@@ -16,6 +16,8 @@ on:
       # hook-command audit (#1921) — every plugin hooks.json + the ruflo-hook shims
       - '**/hooks/hooks.json'
       - '**/scripts/ruflo-hook.sh'
+      # pre-bash hook safety (#2017) — both handler copies trigger the smoke
+      - '**/.claude/helpers/hook-handler.cjs'
   pull_request:
     branches: [main]
     paths:
@@ -25,6 +27,7 @@ on:
       - 'scripts/**'
       - '**/hooks/hooks.json'
       - '**/scripts/ruflo-hook.sh'
+      - '**/.claude/helpers/hook-handler.cjs'
       # witness manifests / fix list — so witness-verify runs on PRs that
       # touch them (otherwise a stale per-OS manifest only fails post-merge).
       - 'verification/**'
@@ -301,6 +304,41 @@ jobs:
         run: |
           node plugins/ruflo-core/scripts/test-hooks.mjs \
             "node $GITHUB_WORKSPACE/v3/@claude-flow/cli/bin/cli.js"
+
+  pre-bash-hook-smoke:
+    # Regression guard for ruvnet/ruflo#2017 — the `pre-bash` PreToolUse hook
+    # in `.claude/helpers/hook-handler.cjs` is a security gate that refuses to
+    # run dangerous commands (`rm -rf /`, fork bombs, etc.). In 3.6.30 it
+    # silently exited 0 on every dangerous payload because the handler read
+    # the wrong stdin field (`toolInput` object instead of
+    # `toolInput.command` string), `.toLowerCase()` threw TypeError, and the
+    # global safety-timer try/catch swallowed it — printing a misleading
+    # "[OK] Command validated" while letting the dangerous command through.
+    #
+    # This smoke drives real Claude-Code-shaped PreToolUse JSON into BOTH
+    # the published template (v3/@claude-flow/cli/.claude/helpers/) and the
+    # repo's dogfood copy (.claude/helpers/), and fails on any of:
+    #   - dangerous command + exit 0  (the security bypass)
+    #   - "[OK] Command validated" on a dangerous input (the misleading log)
+    #   - "[WARN] Hook X encountered an error" anywhere (silent-swallow shape)
+    #
+    # Independent job (not nested in plugin-hooks-smoke) so the gate is
+    # individually visible and the CI summary names the failure clearly.
+    name: pre-bash hook safety smoke (#2017)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Drive Claude-Code-shaped PreToolUse JSON through both handler copies
+        shell: bash
+        run: node scripts/smoke-pre-bash-hook.mjs
 
   mcp-protocol-smoke:
     # Regression guard for ruvnet/ruflo#1874 — boots the HTTP MCP server,
@@ -673,7 +711,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-    needs: [smoke-install-no-bsqlite, plugin-hooks-smoke, mcp-protocol-smoke, memory-import-smoke, tool-descriptions-audit, mcp-roundtrip-smoke, plugin-package-audit, cli-npx-install-smoke, hook-command-audit, vector-dim-audit]
+    needs: [smoke-install-no-bsqlite, plugin-hooks-smoke, pre-bash-hook-smoke, mcp-protocol-smoke, memory-import-smoke, tool-descriptions-audit, mcp-roundtrip-smoke, plugin-package-audit, cli-npx-install-smoke, hook-command-audit, vector-dim-audit]
 
     steps:
       - name: Checkout code
