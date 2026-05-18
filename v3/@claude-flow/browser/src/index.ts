@@ -166,6 +166,37 @@ export {
   type RecoveryExplanation,
 } from './domain/causal-recovery.js';
 
+// Workflow Compiler + Production-Aware UCT (ADR-122 Phase 7)
+export {
+  WorkflowCompiler,
+  type CompileInput,
+} from './application/workflow-compiler.js';
+export {
+  productionUct,
+  blendQ,
+  type ProductionUctInput,
+} from './application/production-uct.js';
+export {
+  WORKFLOW_VERSION,
+  CompiledWorkflowSchema,
+  WorkflowStepSchema as CompiledWorkflowStepSchema,
+  WorkflowRequirementsSchema as CompiledWorkflowRequirementsSchema,
+  WorkflowGuardsSchema as CompiledWorkflowGuardsSchema,
+  WorkflowReplaySchema as CompiledWorkflowReplaySchema,
+  SelectorStrategySchema,
+  SelectorSpecSchema,
+  DEFAULT_PRODUCTION_UCT_WEIGHTS,
+  type CompiledWorkflow,
+  type WorkflowStep as CompiledWorkflowStep,
+  type WorkflowRequirements as CompiledWorkflowRequirements,
+  type WorkflowGuards as CompiledWorkflowGuards,
+  type WorkflowReplay as CompiledWorkflowReplay,
+  type SelectorSpec,
+  type SelectorStrategy,
+  type ProductionUctSignals,
+  type ProductionUctWeights,
+} from './domain/workflow.js';
+
 // Session Capsule + Risk Classifier + Browser Execution Adapter (ADR-122 Phase 6 — substrate)
 export {
   SessionCapsuleService,
