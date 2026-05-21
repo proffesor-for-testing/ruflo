@@ -73,11 +73,11 @@ const cases = [
     expectBodyFileFlagInArgv: true,
   },
   {
-    name: '>256KB body — Phase 2 target (documented, not yet enforced)',
+    // Phase 2: github-safe.js now enforces the 256KB cap (GITHUB_SAFE_VERSION=1.0.0).
+    // A body exceeding the limit must be rejected (exit 1) BEFORE gh is invoked.
+    name: '>256KB body — must be rejected (body cap, Phase 2)',
     args: ['issue', 'comment', '1', 'x'.repeat(MAX_BODY_BYTES + 1)],
-    // Phase 1: accept any exit code — Phase 2 will add the cap and flip to exit 1.
-    expectExit: 'any',
-    note: 'red→green in Phase 2: 256KB cap not yet implemented in github-safe.js',
+    expectExit: 1,
   },
   {
     name: 'empty body — no-op path, exits 0',
