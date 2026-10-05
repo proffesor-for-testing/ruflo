@@ -4,6 +4,7 @@
  * when the person turns `federationNetwork` on. `plugins list` is never run (it fetches the IPFS registry), nor `verify` (it
  * fetches a manifest from GitHub).
  */
+import { countOf, ratioOf } from './bounds'
 import { closeOf } from './json-span'
 import { idOf, msOf, numberOf, plain, recordOf, stringOf, valuesOf } from './parse'
 import { researchProbe } from './research'
@@ -303,13 +304,13 @@ export const intelligenceProbe: Probe<Intelligence> = {
     const sona = recordOf(value.sona)
     const router = recordOf(value.modelRouter)
     const neural = recordOf(value.neuralRouter)
-    const routerDecisions = numberOf(router?.totalDecisions)
+    const routerDecisions = countOf(router?.totalDecisions)
     const out: Intelligence = {}
-    const trajectories = numberOf(sona?.trajectoriesTotal)
-    const patterns = numberOf(sona?.patternsLearned)
-    const successRate = numberOf(sona?.successRate)
-    const moeDecisions = numberOf(recordOf(value.moe)?.routingDecisions)
-    const ewc = numberOf(recordOf(value.ewc)?.consolidations)
+    const trajectories = countOf(sona?.trajectoriesTotal)
+    const patterns = countOf(sona?.patternsLearned)
+    const successRate = ratioOf(sona?.successRate)
+    const moeDecisions = countOf(recordOf(value.moe)?.routingDecisions)
+    const ewc = countOf(recordOf(value.ewc)?.consolidations)
 
     if (trajectories !== undefined) out.trajectories = trajectories
     if (patterns !== undefined) out.patterns = patterns
@@ -318,7 +319,7 @@ export const intelligenceProbe: Probe<Intelligence> = {
     if (ewc !== undefined) out.ewcConsolidations = ewc
     if (routerDecisions !== undefined) out.routerDecisions = routerDecisions
     // The tool answers a default confidence before the first decision: only a measured one is kept.
-    if (routerDecisions !== undefined && routerDecisions > 0 && numberOf(router?.avgConfidence) !== undefined) out.routerConfidence = numberOf(router?.avgConfidence) as number
+    if (routerDecisions !== undefined && routerDecisions > 0 && ratioOf(router?.avgConfidence) !== undefined) out.routerConfidence = ratioOf(router?.avgConfidence) as number
     if (neural !== null) out.neuralRouter = neural.enabled === true ? 'on' : `off (${plain(neural.reason, 40) || 'not enabled'})`
 
     return out

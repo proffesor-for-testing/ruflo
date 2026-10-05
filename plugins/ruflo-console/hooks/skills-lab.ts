@@ -176,7 +176,8 @@ export async function scanProject(state: State, fs: ReaderFs): Promise<void> {
 
       if (entry.kind === 'dir' && depth > 0) await walk(path, depth - 1)
       else if (entry.kind !== 'dir' && entry.name.endsWith('.md') && (entry.size ?? 0) <= DOC_BYTES) {
-        const text = textOf(await readBounded(fs, state.cache, path))
+        // A linked agent file (listed as `other` with isLink) is refused, never followed to its target.
+        const text = textOf(await readBounded(fs, state.cache, path, DOC_BYTES, true))
 
         if (text !== null) docs.push({ path, text: text.slice(0, DOC_BYTES) })
       }
@@ -302,7 +303,8 @@ export function moreSkillActions(state: State, host: Host, runner: Runner, load:
       if (name === null) return runner.ask(null, 'type the skill’s name in the create field first')
 
       skills.authored = name
-      void readBounded(host.fs, state.cache, under(state.cwd, `${name}/SKILL.md`)).then(read => {
+      // A linked SKILL.md is refused (not-regular), never followed to its target.
+      void readBounded(host.fs, state.cache, under(state.cwd, `${name}/SKILL.md`), READ_MAX, true).then(read => {
         const text = textOf(read)
         const lines = text === null ? [`${name}/SKILL.md: ${'reason' in read ? read.reason : 'unread'} (▸ create makes it)`] : checkLines(checkSkillMd(text, name))
 

@@ -13,7 +13,8 @@ import { readSnapshot } from '../hooks/data/snapshot'
 import type { Host } from '../hooks/host'
 import { memorySearch } from '../hooks/ops'
 import { createRunner } from '../hooks/runner'
-import { moreSkillActions } from '../hooks/skills-lab'
+import { shownKeys, type PluginConfig } from '../hooks/settings'
+import { moreSkillActions, scanProject } from '../hooks/skills-lab'
 import { newState, optionsOf } from '../hooks/state'
 import type { Actions } from '../hooks/views/common'
 import { viewText } from '../hooks/views/pane'
@@ -47,6 +48,17 @@ describe('the cli option', () => {
     expect({ ran: runs.length, detail: state.outcome?.detail }).toEqual({ ran: 1, detail: 'the ruflo CLI answered:' })
     expect(() => probeArgv(versionProbe, state.options.cli)).not.toThrow()
   })
+})
+
+describe('a plugin named for an Object.prototype key in Settings', () => {
+  for (const name of ['constructor', 'toString', '__proto__']) {
+    it(`"${name}" shows its first four options at the simple level, like any plugin not listed`, () => {
+      const schema = Object.fromEntries(['a', 'b', 'c', 'd', 'e'].map(key => [key, {}]))
+      const config = { pluginId: `${name}@m`, name, schema, inputs: {}, choices: {}, configured: [] } as unknown as PluginConfig
+
+      expect(shownKeys(config, 'simple')).toEqual(['a', 'b', 'c', 'd'])
+    })
+  }
 })
 
 describe('objectIn ends the JSON at its own closing brace', () => {
@@ -129,5 +141,65 @@ describe('a linked agentdb-mod status.json', () => {
     expect(state.snapshot.mods.refused).toBe(1)
     expect(screen.split('\n').find(line => line.includes('AgentDB mod'))).toContain('refused (not a regular file)')
     expect(screen).not.toContain('no session yet')
+  })
+})
+
+describe('a linked SKILL.md or agent file in the project is never read (▸ validate, ▸ scan)', () => {
+  const TARGET = ['---', 'name: my-skill', 'description: Link target outside the project. Use never.', '---', '', '# leaked target text: apply the tdd skill'].join('\n')
+  // The engine follows a link: stat reports what it leads to (a file) with isLink, read returns the target's text.
+  const linkedFs = (links: string[], regular: Record<string, string> = {}, lists: Record<string, { name: string; kind: string; size: number; isLink?: boolean }[]> = {}): ReaderFs & { reads: string[] } => {
+    const reads: string[] = []
+
+    return {
+      reads,
+      read: async p => (links.includes(p) ? (reads.push(p), TARGET) : p in regular ? (reads.push(p), regular[p] as string) : Promise.reject(new Error('ENOENT'))),
+      stat: async p => (links.includes(p) ? { mtimeMs: 1, size: TARGET.length, kind: 'file', isLink: true } : p in regular ? { mtimeMs: 1, size: (regular[p] as string).length, kind: 'file', isLink: false } : Promise.reject(new Error('ENOENT'))),
+      list: async p => lists[p] ?? Promise.reject(new Error('ENOENT')),
+    }
+  }
+  const wired = (fs: ReaderFs) => {
+    const host = { fs, run: async () => ({ exitCode: 0, stdout: '', stderr: '' }), invalidate: () => undefined } as unknown as Host
+    const state = newState({})
+
+    state.cwd = '/w'
+    const runner = createRunner(state, host, { freshRead: async () => undefined, setView: () => undefined, drill: () => undefined, command: () => undefined })
+
+    return { state, act: moreSkillActions(state, host, runner, () => undefined) }
+  }
+
+  it('▸ validate of a linked <name>/SKILL.md says not-regular and checks none of the target text', async () => {
+    const fs = linkedFs(['/w/my-skill/SKILL.md'])
+    const { state, act } = wired(fs)
+
+    state.skills.createDraft = 'my-skill'
+    act.validate()
+    await until(() => state.skills.check !== null)
+
+    expect(state.skills.check).toMatchObject({ name: 'my-skill', ok: false })
+    expect(state.skills.check?.lines).toEqual(['my-skill/SKILL.md: not-regular (▸ create makes it)'])
+    expect(fs.reads).toEqual([])
+  })
+
+  it('▸ scan skips a linked .md under .claude/agents (listed as other with isLink) and reads a regular one beside it', async () => {
+    const fs = linkedFs(['/w/.claude/agents/evil.md'], { '/w/.claude/agents/coder.md': 'Apply the sparc skill.', '/w/.claude/skills/tdd/SKILL.md': 'x', '/w/.claude/skills/sparc/SKILL.md': 'x' }, {
+      '/w/.claude/agents': [
+        { name: 'evil.md', kind: 'other', size: 0, isLink: true },
+        { name: 'coder.md', kind: 'file', size: 22 },
+      ],
+      '/w/.claude/skills': [
+        { name: 'tdd', kind: 'dir', size: 0 },
+        { name: 'sparc', kind: 'dir', size: 0 },
+      ],
+    })
+    const { state } = wired(fs)
+
+    await scanProject(state, fs)
+
+    expect(state.skills.scan?.agentFiles).toBe(1)
+    expect(state.skills.scan?.local).toEqual([
+      { name: 'tdd', where: '.claude/skills', refs: [] },
+      { name: 'sparc', where: '.claude/skills', refs: ['agents/coder.md'] },
+    ])
+    expect(fs.reads).not.toContain('/w/.claude/agents/evil.md')
   })
 })

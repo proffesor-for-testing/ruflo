@@ -5,7 +5,9 @@
  */
 import { describe, expect, it } from 'vitest'
 
+import { parseAutopilot, parseTemplates, parseWorkflows } from '../hooks/data/automate'
 import { countOf, dateMsOf, isoOf, MAX_DATE_MS, ratioOf } from '../hooks/data/bounds'
+import { intelligenceProbe, type Intelligence } from '../hooks/data/cli'
 import { diffEvents } from '../hooks/data/events'
 import type { ReadCache, ReaderFs } from '../hooks/data/files'
 import { parseModStatus } from '../hooks/data/mods'
@@ -176,5 +178,55 @@ describe('room feed ids', () => {
     expect(events).toHaveLength(2)
     expect(new Set(feed()).size).toBe(2)
     expect(feed()).toEqual(feed())
+  })
+})
+
+describe('counts the CLI answered (Automation lists and autopilot, the Learning live engine)', () => {
+  const HOSTILE = /\bNaN\b|Infinity|\bundefined\b|e[+-]\d|-\d/
+
+  it('workflow and template step counts, autopilot iterations and task progress are whole, non-negative and drawn without an exponent', () => {
+    setLook('plain')
+    const state = newState({})
+
+    state.auto.workflows = parseWorkflows(JSON.stringify({ workflows: [{ workflowId: 'wf-1', name: 'nightly', status: 'running', stepCount: -1e308 }, { workflowId: 'wf-2', name: 'weekly', status: 'running', stepCount: 1e300 }], total: 2 }))
+    state.auto.templates = parseTemplates(JSON.stringify({ templates: [{ templateId: 't-1', name: 'build', stepCount: 2.7 }] }))
+    state.auto.autopilot = parseAutopilot(JSON.stringify({ enabled: true, iterations: 1e300, maxIterations: -5, timeoutMinutes: 1e308, tasks: { completed: 1, total: 2, percent: 1e-7 }, taskSources: ['team-tasks'] }))
+    state.view = 'automate'
+    const screen = viewText({ state, nowMs: 5_000, columns: 160, act }, 'automate')
+    const lines = screen.split('\n').filter(line => /steps?\b|iteration/.test(line))
+
+    expect(state.auto.workflows?.map(row => row.steps)).toEqual([0, Number.MAX_SAFE_INTEGER])
+    expect(state.auto.templates?.[0]?.steps).toBe(2)
+    expect(state.auto.autopilot).toMatchObject({ iterations: Number.MAX_SAFE_INTEGER, maxIterations: 0, timeoutMinutes: Number.MAX_SAFE_INTEGER, done: 1, total: 2, percent: 0 })
+    expect(lines.filter(line => HOSTILE.test(line))).toEqual([])
+    expect(screen).toContain('tasks 1/2 (0%)')
+  })
+
+  it('autopilot percent is held to 0..100 and drawn whole', () => {
+    const percentOf = (percent: unknown) => parseAutopilot(JSON.stringify({ enabled: false, tasks: { completed: 1, total: 3, percent } }))?.percent
+
+    expect([percentOf(33.3333), percentOf(150), percentOf(-20), percentOf(1e308), percentOf('50')]).toEqual([33, 100, 0, 100, 0])
+  })
+
+  it('hooks_intelligence_stats counts are whole and non-negative, successRate and avgConfidence held to 0..1, and the live engine line draws plainly', () => {
+    const intel = intelligenceProbe.parse(
+      JSON.stringify({ sona: { trajectoriesTotal: 3, patternsLearned: 1e300, successRate: 5 }, modelRouter: { totalDecisions: 2.5, avgConfidence: -3 }, moe: { routingDecisions: -1e308 }, ewc: { consolidations: -2 } }),
+    ) as Intelligence
+
+    expect(intel).toMatchObject({ trajectories: 3, patterns: Number.MAX_SAFE_INTEGER, successRate: 1, routerDecisions: 2, routerConfidence: 0 })
+    expect(intel.moeDecisions).toBeUndefined()
+    expect(intel.ewcConsolidations).toBeUndefined()
+
+    setLook('plain')
+    const state = newState({})
+
+    state.probes.set('intelligence', { value: intel, okAtMs: 4_000, error: null, errorAtMs: null, isRunning: false } as never)
+    state.view = 'learning'
+    // The SONA section is closed by default: toggled open, it draws the live engine line.
+    state.sections.add('learning/learn-sona')
+    const engine = viewText({ state, nowMs: 5_000, columns: 200, act }, 'learning').split('\n').find(line => line.includes('trajectories ·'))
+
+    expect(engine).toBeDefined()
+    expect(engine).not.toMatch(HOSTILE)
   })
 })
