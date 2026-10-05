@@ -4,6 +4,7 @@
  * took; a read runs at once and shows what it printed. Nothing reaches `$` but through the Host.
  */
 import type { ActionSpec } from './actions'
+import { gateClaudeAsk, levelRefusal, logControl, originOf, type AskOrigin } from './control-policy'
 import { rememberKey } from './remember'
 import { record } from './data/events'
 import { plain } from './data/parse'
@@ -11,7 +12,7 @@ import type { Host } from './host'
 import { labLines } from './mh-lab'
 import { outputLines } from './ops'
 import { filterPalette, paletteEntries, textOfQuery, type PaletteEntry } from './palette'
-import { CLI_PREFIXES, type State } from './state'
+import { CLI_PREFIXES, type Pending, type State } from './state'
 
 export const PENDING_TTL_MS = 30_000
 
@@ -24,8 +25,10 @@ export type RunnerDeps = {
 }
 
 export type Runner = {
-  ask: (spec: ActionSpec | null, why: string) => void
-  confirm: () => Promise<void>
+  /** `origin` is who raised it, captured when it was raised (control-policy.ts): an ask screened first passes the one it captured. */
+  ask: (spec: ActionSpec | null, why: string, origin?: AskOrigin) => void
+  /** `seen` is the id of the card the person said Yes to: when another card took its place since, nothing runs (ADR-450 T17). */
+  confirm: (seen?: number) => Promise<void>
   cancel: () => void
   runEntry: (entry: PaletteEntry, text: string) => void
   /** `exact` (the model path, ADR-450 T13) resolves the id as written and never falls back to fuzzy matching. */
@@ -38,6 +41,7 @@ export type Runner = {
 
 export function createRunner(state: State, host: Host, deps: RunnerDeps): Runner {
   let pendingSpec: ActionSpec | null = null
+  let asks = 0
   let inflight: Promise<void> = Promise.resolve()
   let background: Promise<void> = Promise.resolve()
 
@@ -112,11 +116,22 @@ export function createRunner(state: State, host: Host, deps: RunnerDeps): Runner
     }
   }
 
-  function ask(spec: ActionSpec | null, why: string): void {
+  function ask(spec: ActionSpec | null, why: string, origin: AskOrigin = originOf(state)): void {
     state.palette.isOpen = false
     // Where this came from: the page puts the confirm and the answer right after that element. A headless run has no press, so it falls back to the top.
     state.origin = state.lastPressed
     state.lastPressed = null
+
+    const byClaude = origin.by === 'claude'
+
+    // Claude never replaces or clears an action waiting for the person (ADR-450 T17): the card they are reading stays the one their Yes runs.
+    // A screened ask of Claude's can land at any moment after its tool call returned, so this holds here and not only in the model tools.
+    if (byClaude && state.pending !== null) {
+      logControl(state, 'ask', `not asked: ${spec?.label ?? 'nothing'}`, 'denied', `"${state.pending.label}" was waiting for the person`)
+      say(spec?.label ?? 'nothing to do', false, `not asked: "${plain(state.pending.label, 60)}" is waiting for your answer`)
+
+      return
+    }
 
     if (spec === null) {
       pendingSpec = null
@@ -126,7 +141,27 @@ export function createRunner(state: State, host: Host, deps: RunnerDeps): Runner
       return
     }
 
-    if (spec.isReadOnly === true) {
+    // An entry that declares a class is read-only for the person (their click is the consent) but not for Claude: a network read, a palette
+    // wrapper that starts a turn or writes the mission ledger. Claude's call of it goes through the gate below like any other (ADR-444 levels).
+    const isGated = byClaude && spec.declared !== undefined
+
+    if (spec.isReadOnly === true && !isGated) {
+      inflight = execute(spec)
+
+      return
+    }
+
+    // An entry that only fills a field, or raises its own ask (screened first, then gated when it lands): Claude's level is checked, nothing more.
+    if (isGated && spec.levelOnly === true) {
+      const refused = levelRefusal(state, spec, origin.level)
+
+      if (refused !== null) {
+        logControl(state, 'ask', spec.label, 'denied', refused)
+        say(spec.label, false, refused)
+
+        return
+      }
+
       inflight = execute(spec)
 
       return
@@ -136,18 +171,48 @@ export function createRunner(state: State, host: Host, deps: RunnerDeps): Runner
     // Claude asked for (ADR-444) still goes through the pending path, where the control level and the confirm mode decide.
     const kind = rememberKey(spec)
 
-    if (kind !== null && state.allowed.has(kind) && !state.control.viaModel) {
+    if (kind !== null && state.allowed.has(kind) && !byClaude) {
       inflight = execute({ ...spec, label: `${spec.label} (remembered: not asked)` })
 
       return
     }
 
+    asks += 1
+
+    const pending: Pending = { id: asks, view: state.view, ...(kind !== null && { rememberKey: kind }), ...(spec.scope !== undefined && { scope: spec.scope }), label: spec.label, args: spec.args, expect: spec.expect, askedAtMs: Date.now(), source: byClaude ? 'claude' : 'you', ...(spec.shows !== undefined && { shows: spec.shows }), ...(spec.note !== undefined && { note: spec.note }), ...(spec.declared !== undefined && { declared: spec.declared }) }
+
+    // Claude's ask that lands after its tool call returned (it was screened first): no call is left to settle it, so the same gate runs here.
+    // It always waits for the person, even in auto: nobody is there to report what an unattended run did.
+    if (byClaude && !state.control.viaModel) {
+      // Stop pressed meanwhile refuses before the gate, so a refused ask is not counted against the budget.
+      const gate = state.control.paused ? null : gateClaudeAsk(state, pending, origin.level)
+
+      if (gate === null || gate.verdict === 'level' || gate.verdict === 'budget') {
+        const why = gate === null ? 'the person took control back' : gate.verdict === 'level' ? `a ${gate.kind} action needs more than "${gate.level}"` : `the session budget for ${gate.kind} actions is used up`
+
+        logControl(state, 'ask', spec.label, 'denied', why)
+        say(spec.label, false, `Claude's ask was not queued: ${why}`)
+
+        return
+      }
+
+      if (gate.kind !== 'read') pending.kind = gate.kind
+      logControl(state, 'ask', spec.label, 'waiting', 'screened first; waits for the person')
+    }
+
     pendingSpec = spec
-    state.pending = { view: state.view, ...(kind !== null && { rememberKey: kind }), ...(spec.scope !== undefined && { scope: spec.scope }), label: spec.label, args: spec.args, expect: spec.expect, askedAtMs: Date.now(), source: state.control.viaModel ? 'claude' : 'you', ...(spec.shows !== undefined && { shows: spec.shows }), ...(spec.note !== undefined && { note: spec.note }), ...(spec.declared !== undefined && { declared: spec.declared }) }
+    state.pending = pending
     host.invalidate()
   }
 
-  async function confirm(): Promise<void> {
+  async function confirm(seen?: number): Promise<void> {
+    // The Yes answers the card the person read. If another card took its place before the key landed, the new one stays to be read.
+    if (seen !== undefined && state.pending !== null && state.pending.id !== seen) {
+      say(state.pending.label, false, 'the card changed before your Yes: read it, then answer again')
+
+      return
+    }
+
     const spec = pendingSpec
     const isFresh = state.pending !== null && Date.now() - state.pending.askedAtMs < PENDING_TTL_MS
 

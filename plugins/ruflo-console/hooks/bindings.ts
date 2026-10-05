@@ -75,15 +75,16 @@ export function actionsOf(state: State, host: Host, runner: Runner, steps: Steps
 
   const actions: Actions = {
     view: setView,
-    remember: () => {
+    remember: seen => {
       const key = state.pending?.rememberKey
 
-      if (key !== undefined && state.pending !== null) {
+      // Only the kind on the card the person pressed it on: a card that changed meanwhile is neither remembered nor run.
+      if (key !== undefined && state.pending !== null && (seen === undefined || state.pending.id === seen)) {
         state.allowed.set(key, state.pending.label)
         saveAllowed(state, host)
       }
 
-      void runner.confirm()
+      void runner.confirm(seen)
     },
     forget: key => {
       if (key === '') state.allowed.clear()
@@ -146,7 +147,7 @@ export function actionsOf(state: State, host: Host, runner: Runner, steps: Steps
     },
     close: () => void close(),
     back: () => setView(state.view === 'agent' ? state.back : state.options.look === 'bbs' ? 'menu' : 'overview'),
-    confirm: () => void runner.confirm(),
+    confirm: seen => void runner.confirm(seen),
     cancel: runner.cancel,
     select,
     agentNext: () => {

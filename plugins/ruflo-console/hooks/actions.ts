@@ -27,6 +27,11 @@ export type ActionSpec = {
   shows?: string
   /** The class the entry itself declares (a Dev Tools entry's `cost`): Claude's confirm gate never reads it as less than this. */
   declared?: 'write' | 'network' | 'install' | 'spend' | 'delete'
+  /**
+   * With `declared`: Claude's call checks only that its level allows the class, then runs at once. For an entry that fills a field (as
+   * `console_set` does) or raises its own ask, which is screened first and gated when it lands (runner.ts), so it is not asked twice.
+   */
+  levelOnly?: boolean
   /** A MetaHarness lab entry's id: the runner keeps what it printed for the lab's result panel. */
   lab?: string
   /** What a run costs or writes, in words: the confirm row and the result panel show it. */

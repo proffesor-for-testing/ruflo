@@ -14,6 +14,7 @@ import type { Host } from './host'
 import { plain, type TaskRecord } from './data/parse'
 import { isAvailable, MISSION_SKILLS, slashOf, GOALS_PLUGIN } from './mission-skills'
 import { offerGuidance } from './mission-guidance'
+import { originOf, type AskOrigin } from './control-policy'
 import { blocksCreate, blocksGuidance, capUsd, isCapability, RESEARCH_DEFAULT_CAP, researchArgs, researchConfirm, researchWhy, screenText, type ResearchDepth } from './mission-options'
 import type { Runner } from './runner'
 import { CLI_PREFIXES, type State } from './state'
@@ -181,7 +182,7 @@ export function missionActions(state: State, host: Host, runner: Runner): Missio
   const tasksNow = (): readonly TaskRecord[] => state.snapshot?.tasks ?? []
 
   /** Runs a slash command on the goal (or the active mission's objective) in the main UI: now when idle, prepared in the prompt box mid-turn. */
-  const launch = (slash: string, label: string, custom?: { args: string; note: string }) => {
+  const launch = (slash: string, label: string, custom?: { args: string; note: string }, origin: AskOrigin = originOf(state)) => {
     const objective = activeMission(state)?.objective ?? mc.goal
 
     // A research start brings its own, already screened arguments; every other launch works on the goal.
@@ -216,6 +217,7 @@ export function missionActions(state: State, host: Host, runner: Runner): Missio
         },
       },
       'type a goal first',
+      origin,
     )
   }
 
@@ -230,6 +232,9 @@ export function missionActions(state: State, host: Host, runner: Runner): Missio
     if (refused !== null || cap === null || skill === undefined) return say('research', false, refused ?? 'deep-research is not a ruflo-goals skill')
     if (!isAvailable(state, skill)) return say(`${slashOf(skill)} is not available`, false, `install the ${GOALS_PLUGIN} plugin (Plugin Catalog) and /reload-plugins`)
 
+    // Who started it, taken before the screen: its answer lands after Claude's tool call returned (ADR-450 T14).
+    const origin = originOf(state)
+
     void screenText(state, host, question).then(screen => {
       const now = researchOf(state)
 
@@ -237,7 +242,7 @@ export function missionActions(state: State, host: Host, runner: Runner): Missio
       if (now.question !== draft.question || now.depth !== draft.depth || now.cap !== draft.cap) return
       if (blocksGuidance(screen)) return say('AIDefence blocked the question', false, `${screen.detail}. Change the question.`)
 
-      launch(slashOf(skill), 'deep research', { args: researchArgs(question, draft.depth, cap), note: researchConfirm(draft.depth, cap, screen) })
+      launch(slashOf(skill), 'deep research', { args: researchArgs(question, draft.depth, cap), note: researchConfirm(draft.depth, cap, screen) }, origin)
     })
   }
 
@@ -349,12 +354,15 @@ export function missionActions(state: State, host: Host, runner: Runner): Missio
 
       if (t !== '') mc.lastGuide = t
 
+      // Who asked, taken now: the screen answers after Claude's tool call returned, and the ask is gated as Claude's then (ADR-450 T14).
+      const origin = originOf(state)
       const ask = () =>
         runner.ask(
           t === ''
             ? null
             : { label: `send Claude: ${plain(t, 70)}`, scope: 'guide', args: [], shows: `to the Claude Code session, as a visible prompt: “${t}”`, expect: 'the instruction in the transcript', note: 'Starts a Claude Code turn (billed as any turn is).', run: async () => host.submitPrompt(t) },
           'type the instruction first',
+          origin,
         )
 
       if (t === '' || !mc.isScreenOn) return ask()

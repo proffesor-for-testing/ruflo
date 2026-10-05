@@ -57,6 +57,8 @@ export function useSpec(state: State, host: Host, found: FoundSkill, load: (text
     shows: argv.join(' '),
     expect: 'the skill’s prompt typed into the AI terminal',
     isReadOnly: true,
+    // npx skills reaches skills.sh (and downloads the package): the click is the person's consent; for Claude it is network (ADR-444).
+    declared: 'network',
     note: NOTES.use,
     run: async () => {
       const skills = state.skills
@@ -99,6 +101,8 @@ export function previewFoundSpec(state: State, host: Host, found: FoundSkill): A
     shows: argv.join(' '),
     expect: 'the repository’s skills in the preview panel',
     isReadOnly: true,
+    // npx skills reaches skills.sh (and downloads the package): the click is the person's consent; for Claude it is network (ADR-444).
+    declared: 'network',
     note: NOTES.list,
     run: async () => {
       const skills = state.skills
@@ -331,6 +335,8 @@ export function skillPaletteEntries(state: State): PaletteEntry[] {
       shows: argv.join(' '),
       expect: 'the results in the skills view',
       isReadOnly: true,
+      // Claude's text goes to skills.sh through `npx -y skills find`: network for Claude (ADR-444), at once only for the person.
+      declared: 'network',
       note: 'network: asks skills.sh',
       run: async () => {
         state.skills.searchDraft = text
