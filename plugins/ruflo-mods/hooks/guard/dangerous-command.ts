@@ -68,6 +68,10 @@ function hasRootDelete(command: string, depth = 0): boolean {
       else if (quote === '"' && char === '\x60' && command.indexOf('\x60', i + 1) > i) {
         const [end, denied] = substitution(i + 1, true)
         if (denied) return true
+        // The substitution is gone from the word, as bash's empty output is (a quoted empty substitution glued to -rf leaves -rf).
+        // A # right after it is still inside the word: a placeholder keeps a rescan (sh -c "...")
+        // from reading it as the start of a comment.
+        if (command[end + 1] === '#') word += '\u0001'
         i = end
       }
       else if (quote === '"' && char === '\\' && i + 1 < command.length &&

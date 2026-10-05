@@ -327,6 +327,10 @@ describe('#3698 root deletion guard parity', () => {
     ['echo it` costs; rm -rf /', true],
     ['echo "a ` b"; rm -rf /', true],
     ['echo "a ` b"; ls /', false],
+    // A quoted empty substitution glued to a flag leaves the flag; a # after one inside sh -c stays in the word.
+    ['\\rm "`true`"--recursive --force /', true],
+    ['rm "`true`"-rf /*', true],
+    ['bash -c "`true`#x; rm -rf /"', true],
     ['echo `ls` /tmp', false],
     ['format c: /q /y', true],
     ['del /s /q c:\\', true],
