@@ -4,6 +4,7 @@
  * when the person turns `federationNetwork` on. `plugins list` is never run (it fetches the IPFS registry), nor `verify` (it
  * fetches a manifest from GitHub).
  */
+import { closeOf } from './json-span'
 import { idOf, msOf, numberOf, plain, recordOf, stringOf, valuesOf } from './parse'
 import { researchProbe } from './research'
 
@@ -39,7 +40,11 @@ export function jsonAfter(stdout: string): unknown {
     return null
   }
 
-  const end = Math.max(text.lastIndexOf('}'), text.lastIndexOf(']'))
+  const end = closeOf(text, start)
+
+  if (end < 0) {
+    return null
+  }
 
   try {
     return JSON.parse(text.slice(start, end + 1))

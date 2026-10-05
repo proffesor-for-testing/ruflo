@@ -25,7 +25,7 @@ Four tools, `mcp__ruflo-console__` plus:
 - `console_set {field, value}`: fill a field the pages have (`goal`, `profile`, `rigor`, `research.question|depth|cap`, `dev.<field>`, `cost.budget`).
 - `console_run {id, text?}`: run a palette entry, the same ids `/ruflo run` takes.
 
-**How much Claude may do is a setting**, off by default:
+**How much Claude may do is a setting**, `read` by default since ruflo-console 0.33.18 (it was off; a person who saved "off" stays off):
 
 | Level | Claude may |
 |---|---|
@@ -61,3 +61,7 @@ With `ask` as the default, a person who had turned control on found Claude parke
 ## 7. Amendment: auto never answers network, spend or delete (console 0.33.4, ADR-450 T8, T12)
 
 `modelConfirm: auto` no longer applies to every class. An action classed `network`, `spend` or `delete` always waits for the person in the console's confirm row, even in `auto`: Claude's call is answered "Waiting for the person to confirm" and it must not retry. `auto` still runs local `write` actions unattended. Text Claude passes to `console_set` (the value) or `console_run` (the text) is screened with the shared secret screen (`hooks/screen.ts`, a copy kept in step by `scripts/sync-mod-screen.mjs`) before it reaches an entry; a match is refused ("that text looks like a secret") and never echoed. `RUFLO_CONSOLE_CONTROL` may only lower the saved level, or force `ask`; it can no longer raise either, so a project's settings `env` cannot give Claude more control than the person saved. For a recording or a test that needs a level, save it in Settings (or the plugin store) instead of the environment.
+
+## Update (2026-10-05): the default is read + ask
+
+Default `modelControl` is now `read` and default `modelConfirm` is `ask`, at the owner's request, so Claude can open pages and read the state of a console without anyone first finding the setting. `read` never acts, so the earlier "parked on every write" problem that moved the confirm default to `auto` cannot arise at the default level; a pending ask is now also shown as a banner in the console. A missing confirm mode is `ask`: only a saved `auto` is auto, and a saved `off` stays off. Raising the level (write and above) remains the person's choice in Settings → Claude control. The four tools now register in every session by default, which adds their few hundred tokens to each request.

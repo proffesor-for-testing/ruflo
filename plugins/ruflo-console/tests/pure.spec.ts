@@ -115,6 +115,11 @@ describe('CLI JSON', () => {
     expect(jsonAfter('Transformers.js loaded: x\n{\n "a": 1\n}\n')).toEqual({ a: 1 })
     expect(jsonAfter('[INFO] Executing tool\nResult:\n{\n "b": [1]\n}')).toEqual({ b: [1] })
     expect(jsonAfter('no json here')).toBeNull()
+    // a trailing log line with a stray bracket is not part of the JSON (#3789)
+    expect(jsonAfter('{"available":true,"totalDecisions":5}\n[info] see https://x/guide]')).toEqual({ available: true, totalDecisions: 5 })
+    expect(jsonAfter('{"backend":"sqlite","entries":{"total":10}}\nDone (lexical-degraded}')).toEqual({ backend: 'sqlite', entries: { total: 10 } })
+    expect(jsonAfter('{"s":"a } and ] in a string","n":1}\ntrailing ]')).toEqual({ s: 'a } and ] in a string', n: 1 })
+    expect(jsonAfter('{"cut":')).toBeNull()
   })
 
   it('no probe reaches the network but the opt-in roster and registry; plugins list and verify are never run', () => {

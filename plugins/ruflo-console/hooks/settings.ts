@@ -61,7 +61,7 @@ export const CLAUDE_MODELS = ['default', 'haiku', 'sonnet', 'opus'] as const
 export const AI_BUDGETS = [0.25, 0.5, 1, 2] as const
 /** `autoAccept`: claude, codex and swarm turns go straight out with no confirm (they stay read-only, in plan mode, under the budget); ruflo commands still ask. */
 export type AiPrefs = { claudeModel: (typeof CLAUDE_MODELS)[number]; budgetUsd: (typeof AI_BUDGETS)[number]; autoAccept: boolean; /** Claude writes guidance after a mission goal is entered. */ guidance: boolean; /** ADR-443: the active mission and task ride in Claude's prompt (changes only when the task changes). */ missionContext: boolean; /** ADR-443: the person's own gate commands, one per line or `\n`-separated (parseGates validates). */ loopGates: string; /** ADR-443: a USD cap for one mission's spend ('' none). */ missionCapUsd: string; /** ADR-444: how far Claude may drive the console with its console_* tools (they exist only when not off). */ modelControl: 'off' | 'read' | 'write' | 'manage' | 'full'; /** ADR-444: a non-read action waits for the person's Yes (ask) or confirms itself (auto). */ modelConfirm: 'ask' | 'auto' } & LoopPrefs
-export const DEFAULT_AI: AiPrefs = { claudeModel: 'default', budgetUsd: 1, autoAccept: false, guidance: true, missionContext: true, loopGates: '', missionCapUsd: '', modelControl: 'off', modelConfirm: 'auto', ...DEFAULT_LOOP }
+export const DEFAULT_AI: AiPrefs = { claudeModel: 'default', budgetUsd: 1, autoAccept: false, guidance: true, missionContext: true, loopGates: '', missionCapUsd: '', modelControl: 'read', modelConfirm: 'ask', ...DEFAULT_LOOP }
 
 const ON_OFF = ['on', 'off'] as const
 const onOff = (value: boolean) => (value ? 'on' : 'off')
@@ -297,8 +297,9 @@ export async function loadAiPrefs(state: State, host: Host): Promise<void> {
     budgetUsd: budget ?? DEFAULT_AI.budgetUsd,
     autoAccept: stored?.autoAccept === true,
     guidance: stored?.guidance !== false,
-    modelControl: (['read', 'write', 'manage', 'full'] as const).find(item => item === stored?.modelControl) ?? 'off',
-    modelConfirm: stored?.modelConfirm === 'ask' ? 'ask' : 'auto',
+    // Default `read` (Claude may look, never act), and an explicit saved "off" stays off. A missing confirm mode is `ask`: only a saved "auto" is auto.
+    modelControl: stored?.modelControl === 'off' ? 'off' : ((['read', 'write', 'manage', 'full'] as const).find(item => item === stored?.modelControl) ?? DEFAULT_AI.modelControl),
+    modelConfirm: stored?.modelConfirm === 'auto' ? 'auto' : 'ask',
     missionContext: stored?.missionContext !== false,
     loopGates: typeof stored?.loopGates === 'string' ? stored.loopGates.slice(0, 800) : '',
     missionCapUsd: typeof stored?.missionCapUsd === 'string' && /^\d{1,5}(\.\d{1,2})?$/.test(stored.missionCapUsd) ? stored.missionCapUsd : '',

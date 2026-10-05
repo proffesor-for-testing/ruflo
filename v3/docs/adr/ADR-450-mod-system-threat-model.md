@@ -122,7 +122,7 @@ Status: **fixed** (this change), **held** (attempted, no break), **open** (recom
 
 ### T8. Autopilot default: the worst action at `write` / `manage` with `confirm=auto` (required item 8)
 
-- Setup: `modelControl` defaults to `off` (`settings.ts:49`); `modelConfirm` defaults to `auto` (`settings.ts:286`), so raising the level also removes the person's Yes. Cap: 40 calls per turn, reset at every `turn.start` (`register.ts:343`).
+- Setup: `modelControl` defaults to `read` and `modelConfirm` to `ask` since ruflo-console 0.33.18 (it was `off` and `auto`, so raising the level also removed the person's Yes); a saved `off` or `auto` is kept. Cap: 40 calls per turn, reset at every `turn.start` (`register.ts:343`).
 - At `write` (after T1): file and store writes: `auto-cfg-set` (rewrites `.claude-flow/config.json`), `auto-ses-save`, `task` / `mission` / `auto-task-new` (text that later agents act on), `store`, `mem-pattern-store`, `nn-pattern-store`, `vec-hooks-remember` (plant memory that is recalled in later sessions: T15), `daemon`, `init`, worker dispatch, `mem-export` (overwrites `.claude-flow/memory-export.json`). No shell, no network, no billed model (these now need more).
 - At `manage`: everything networked: `x-publish` and `x-bbs-publish` (publish text as the person's own key), `vec-brain-transfer` / `sync-push` (publish to pi.ruv.io under the person's identity), `broadcast`, `federation-join`, `marketplace` and `plugin-install` (install code that runs with Claude Code's access), `dt-update-all` (download and write `node_modules`). **This is the worst reachable level in practice: read a secret with any file tool, then publish it with `x-publish`.** Nothing in the console reads the published text for secrets.
 - Is the per-turn cap enough? No. It bounds one turn; a `/loop` or any long task gets 40 per turn without limit, and the cap says nothing about class (40 `x-publish` calls fit).
@@ -261,6 +261,6 @@ Sections 1-8 are left as written; this section records what happened after. The 
 | T18 | Denial of service by the model | Held for the console; the cap does not span turns (see T8's per-session budgets) | n/a |
 | T19 | `http.fetch` hook sees other plugins' requests | **Recorded, no fix**, by design of the entry. ADR-451 item 4's governor is not built. | #3737 (research), #3740 (this entry) |
 
-**Human decisions still open.** (1) Whether `modelConfirm` should default to `ask`: `DEFAULT_AI` in `ruflo-console/hooks/settings.ts` still has `modelConfirm: 'auto'`, with `modelControl: 'off'` so it matters only after the person raises control; T8's always-ask classes bound it. (2) Whether T9's default becomes `refuse-risky`.
+**Human decisions still open.** (1) ~~Whether `modelConfirm` should default to `ask`~~ — resolved 2026-10-05: the default is now `ask`, with `modelControl: 'read'`; T8's always-ask classes still bound `auto`. (2) Whether T9's default becomes `refuse-risky`.
 
 **Not verified:** the regression-test counts in section 7 were not re-run for this update; no code or test result was re-measured here, only PR state and the files named above.

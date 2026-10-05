@@ -61,7 +61,15 @@ const INSTALL = /\b(install\w*|marketplace|claude plugin|plugin (enable|disable|
 const NETWORK = /\b(network|publish|deploy|push|install|download|fetch|registry|github|npm|gcloud|upload|update|clone|join|federat|reaches|curl|https?:|ssh|webhook|slack|ipfs|pi\.ruv\.io|x\.ruv\.io|relay|peer|broadcast|sends?|sync)/
 
 /** Which class an action is, from its label, command and notes; anything unclear counts as the most dangerous class. */
-export function classOf(pending: Pick<Pending, 'label' | 'args' | 'note' | 'shows' | 'expect'>): ActionClass {
+/** From least to most dangerous: the stricter of the class read from the words and the class the entry declares wins. */
+const SEVERITY: readonly ActionClass[] = ['read', 'write', 'network', 'install', 'spend', 'delete']
+const stricter = (a: ActionClass, b: ActionClass | undefined): ActionClass => (b !== undefined && SEVERITY.indexOf(b) > SEVERITY.indexOf(a) ? b : a)
+
+export function classOf(pending: Pick<Pending, 'label' | 'args' | 'note' | 'shows' | 'expect' | 'declared'>): ActionClass {
+  return stricter(classFromWords(pending), pending.declared)
+}
+
+function classFromWords(pending: Pick<Pending, 'label' | 'args' | 'note' | 'shows' | 'expect'>): ActionClass {
   // The console's own notes say what an action does NOT do too ("spends nothing", "not a charge", "runs no agent"): those must not count.
   const prose = `${pending.note ?? ''} ${pending.shows ?? ''}`
     .toLowerCase()

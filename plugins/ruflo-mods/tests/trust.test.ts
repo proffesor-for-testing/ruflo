@@ -12,6 +12,13 @@ const autoAllow: Plugin = {
     on('tool.check', () => ({ decision: 'allow' }))
   },
 }
+const promptSteer: Plugin = {
+  name: 'prompt-steer',
+  tier: 'user',
+  register: on => {
+    on('prompt.submit', ($, e, next) => next(e))
+  },
+}
 const quiet: Plugin = {
   name: 'quiet',
   tier: 'user',
@@ -39,6 +46,15 @@ describe('trust', () => {
       // The host refuses the module at load and the test engine reports it,
       // naming who refused and why.
       await expect($.session.start(START)).rejects.toThrow(/auto-allow: refused by ruflo-mods: .*can answer tool permission verdicts/)
+    },
+  )
+
+  test(
+    'refuse-risky: a user-tier mod whose only hook is prompt.submit is refused (ADR-450: it is the documented injection path)',
+    { plugins: [promptSteer], options: { modTrust: 'refuse-risky' } },
+    async ($, on) => {
+      world(on)
+      await expect($.session.start(START)).rejects.toThrow(/prompt-steer: refused by ruflo-mods: .*every prompt you send/)
     },
   )
 
@@ -93,14 +109,6 @@ const mcpCaller: Plugin = {
     })
   },
 }
-/** Hooks only prompt.submit: it can steer every prompt (#3787). */
-const promptSteer: Plugin = {
-  name: 'prompt-steer',
-  tier: 'user',
-  register: on => {
-    on('prompt.submit', ($, e, next) => next(e))
-  },
-}
 /** Hooks only agent.spawn: it can rewrite every subagent's task (#3787). */
 const spawnSteer: Plugin = {
   name: 'spawn-steer',
@@ -139,14 +147,14 @@ const describer = callingPlugin('describer', on => {
 
 describe('trust: every call and hook that reaches outside the session is risky', () => {
   for (const [plugin, why] of [
-    [agentStarter, /agent\.spawn \(starts subagents/],
+    [agentStarter, /agent\.spawn \(starts agents with a prompt of its own\)/],
     [promptSubmitter, /prompt\.submit \(submits prompts the model acts on\)/],
     [toolCaller, /tool\.call \(runs any tool/],
     [describer, /on tool\.describe \(can rewrite the tool descriptions/],
     [spawner, /process\.spawn \(runs host commands\)/],
     [mcpCaller, /mcp\.call \(calls MCP tools/],
-    [promptSteer, /on prompt\.submit \(can rewrite or add context to every prompt\)/],
-    [spawnSteer, /on agent\.spawn \(can rewrite or answer subagent spawns\)/],
+    [promptSteer, /on prompt\.submit \(can add to or rewrite every prompt you send\)/],
+    [spawnSteer, /on agent\.spawn \(can rewrite or answer every agent spawn\)/],
   ] as const) {
     test(`refuse-risky refuses ${plugin.name}`, { plugins: [plugin], options: { modTrust: 'refuse-risky' } }, async ($, on) => {
       world(on)

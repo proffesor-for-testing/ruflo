@@ -171,6 +171,9 @@ export const DEV: readonly DevEntry[] = [
   ...SANDBOX,
 ]
 
+/** What an entry's own `cost` says its class is: the console's confirm gate never reads an action as less than this. `local` and `read` declare nothing. */
+const DECLARED: Partial<Record<DevCost, NonNullable<ActionSpec['declared']>>> = { writes: 'write', network: 'network', spends: 'spend', deletes: 'delete' }
+
 /** The confirm-free spec for a local read, the asked one for the rest; null when a field breaks its rule or it is n/a. */
 export function devSpec(entry: DevEntry, fields: DevFields): ActionSpec | null {
   const args = entry.na === undefined ? ((entry.exec ?? entry.args)?.(fields) ?? null) : null
@@ -186,6 +189,7 @@ export function devSpec(entry: DevEntry, fields: DevFields): ActionSpec | null {
     lab: entry.id,
     lines: (stdout, stderr) => devLines(entry.id, stdout, stderr),
     ...(entry.cost === 'read' && { isReadOnly: true }),
+    ...(DECLARED[entry.cost] !== undefined && { declared: DECLARED[entry.cost] }),
     ...(entry.note !== undefined && { note: entry.note }),
     ...(entry.timeoutMs !== undefined && { timeoutMs: entry.timeoutMs }),
   }

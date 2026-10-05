@@ -4,7 +4,8 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { allows, callTool, lowerOnly, parseControlEnv } from '../hooks/model-tools'
+import { DEV } from '../hooks/devtools'
+import { allows, callTool, classOf, lowerOnly, parseControlEnv } from '../hooks/model-tools'
 import { setup } from './fixtures/control-setup'
 
 describe('what auto-confirm may never answer (ADR-450 T8)', () => {
@@ -40,6 +41,22 @@ describe('what auto-confirm may never answer (ADR-450 T8)', () => {
       deps.state.pending = null
     }
     expect(calls.confirm).toBe(0)
+  })
+})
+
+describe('an entry\'s own cost is the floor of its class (ADR-450 T8)', () => {
+  it('never reads a network, spend or delete Dev Tools entry as a plain write, whatever its words say', () => {
+    const entry = DEV.find(e => e.id === 'dt-prov-test')
+    expect(entry?.cost).toBe('network')
+    const pending = { label: 'test every configured provider', args: ['providers', 'test', '--all'], expect: 'its result', note: 'asks each one for its models' }
+
+    expect(classOf(pending)).toBe('write')
+    expect(classOf({ ...pending, declared: 'network' })).toBe('network')
+    expect(classOf({ ...pending, declared: 'write' })).toBe('write')
+  })
+
+  it('a declared class never lowers one the words already show', () => {
+    expect(classOf({ label: 'delete the thing', args: [], expect: '', declared: 'write' })).toBe('delete')
   })
 })
 

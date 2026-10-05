@@ -301,6 +301,20 @@ describe('loop-centric missions (ADR-441)', () => {
     expect(settingsOf(state).ai).toEqual(DEFAULT_AI)
   })
 
+  it('Claude may read the console by default and never act without asking; a saved off or auto is kept (ADR-444)', async () => {
+    const state = newState({})
+    const saved = new Map<string, unknown>()
+    const host = { invalidate: () => undefined, storeSet: async (key: string, value: unknown) => void saved.set(key, value), storeGet: async (key: string) => saved.get(key) } as unknown as Host
+
+    expect(DEFAULT_AI).toMatchObject({ modelControl: 'read', modelConfirm: 'ask' })
+    for (const [stored, level, confirm] of [[undefined, 'read', 'ask'], [{ modelControl: 'off' }, 'off', 'ask'], [{ modelControl: 'write', modelConfirm: 'auto' }, 'write', 'auto'], [{ modelControl: 'root', modelConfirm: 'yes' }, 'read', 'ask'], [{ modelControl: 'full' }, 'full', 'ask']] as const) {
+      if (stored === undefined) saved.delete('ai-prefs')
+      else saved.set('ai-prefs', stored)
+      await loadAiPrefs(state, host)
+      expect(settingsOf(state).ai, JSON.stringify(stored)).toMatchObject({ modelControl: level, modelConfirm: confirm })
+    }
+  })
+
   it('has a Help guide on loop-centric missions, linked from the mission guide', () => {
     const guide = TOPICS.find(topic => topic.id === 'mission-loop')
 
