@@ -308,6 +308,13 @@ describe('#3698 root deletion guard parity', () => {
     ['rm --r --f /', true],
     ['rm --recur --forc /*', true],
     ['rm --rec -f /', true],
+    // An empty substitution among rm's operands is dropped by the shell: rm keeps its state.
+    ['rm -rf `true` /', true],
+    ['rm `` -rf /', true],
+    ['rm -rf /tmp/x `:` /', true],
+    ['rm -r `:` -f /', true],
+    ['git commit -m "fix `rm` docs"', false],
+    ['echo `ls` /tmp', false],
     ['format c: /q /y', true],
     ['del /s /q c:\\', true],
     [':(){:|:&};:', true],

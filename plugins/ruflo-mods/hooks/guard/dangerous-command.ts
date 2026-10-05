@@ -61,6 +61,15 @@ function hasRootDelete(command: string, depth = 0): boolean {
     if (char === '\\' && i + 1 < command.length) {
       const next = command[++i]
       if (next !== '\n') { word += next; started = true }
+    } else if (char === '\x60') {
+      // Command substitution: scan the body as its own command; the substitution
+      // stays inside the enclosing word, so the rm being parsed keeps its state.
+      let body = ''
+      for (i++; i < command.length && command[i] !== '\x60'; i++) {
+        if (command[i] === '\\' && i + 1 < command.length) i++
+        body += command[i]
+      }
+      if (depth < 4 ? hasRootDelete(body, depth + 1) : body.includes('rm -rf /')) return true
     } else if (char === '$' && (command[i + 1] === "'" || command[i + 1] === '"')) {
       // ANSI-C ($'...') and locale ($"...") quoting: the $ is not part of the word.
     } else if (char === '"' || char === "'") {
@@ -69,11 +78,11 @@ function hasRootDelete(command: string, depth = 0): boolean {
       while (i < command.length && command[i] !== '\n') i++
       if (finishCommand()) return true
     } else if (char === ' ' || char === '\t' || char === '\r' || char === '\n' ||
-      ';|&()<>\x60'.includes(char)) {
+      ';|&()<>'.includes(char)) {
       if (finishWord()) return true
       // Redirections separate words, but later operands still belong to rm.
       redirect = char === '<' || char === '>'
-      if (!redirectionAmpersand && (char === '\n' || ';|&()\x60'.includes(char)) && finishCommand()) return true
+      if (!redirectionAmpersand && (char === '\n' || ';|&()'.includes(char)) && finishCommand()) return true
     } else {
       word += char; started = true
     }
