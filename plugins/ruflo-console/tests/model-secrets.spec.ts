@@ -77,3 +77,40 @@ describe('console_state never carries a secret from the terminal', () => {
     expect(termText(`code ${CODE} here`)).toBe('code v2.•••• (invite code, masked) here')
   })
 })
+
+describe('a result or a waiting note never carries a secret to the model', () => {
+  it('lastResult.detail and waiting.note in console_state withhold a token or an invite code', async () => {
+    const { state } = await stateAfter('memory list', '[OK] nothing\n')
+    const control = { host: { invalidate: () => undefined, after: () => ({ cancel: () => undefined }) }, setView: () => undefined, open: async () => undefined, actions: deepNoop(), runner: {} }
+    const deps = { state, control } as unknown as ModelToolDeps
+
+    state.outcome = { label: 'run it', ok: false, verified: 'n/a', detail: `failed: ${TOKEN}`, atMs: Date.now() }
+    state.pending = { label: 'next', args: [], expect: 'x', askedAtMs: Date.now(), note: `invite ${CODE}` }
+    const answer = await callTool('console_state', {}, deps)
+
+    expect(answer).not.toContain(TOKEN)
+    expect(answer).not.toContain(CODE)
+  })
+
+  it('a console_run answer withholds a token in the failed run\'s detail', async () => {
+    const { setup } = await import('./fixtures/control-setup')
+    const { state, deps } = setup('write', 'auto', { 'mission-open': { label: 'open Mission Control', readOnly: true } })
+    const runner = (deps as unknown as { control: { runner: { runById: (id: string) => boolean } } }).control.runner
+
+    runner.runById = () => ((state.outcome = { label: 'open Mission Control', ok: false, verified: 'n/a', detail: `stderr: ${TOKEN}`, atMs: Date.now() + 1 }), true)
+    const answer = await callTool('console_run', { id: 'mission-open' }, deps)
+
+    expect(answer).toMatch(/Failed/)
+    expect(answer).not.toContain(TOKEN)
+  })
+})
+
+describe('the shared escape set stays linear', () => {
+  it('a long run of OSC introducers with no terminator cleans in linear time', () => {
+    const t0 = Date.now()
+
+    termText('\u009d'.repeat(100_000))
+    termText(`x${'\u009d]'.repeat(50_000)}`)
+    expect(Date.now() - t0).toBeLessThan(1_000)
+  })
+})

@@ -172,8 +172,8 @@ function stateJson(deps: ModelToolDeps, filter: string): string {
     view: state.view,
     title: VIEWS.find(view => view.id === state.view)?.label ?? state.view,
     screen,
-    waiting: state.pending === null ? null : { ...(askedBy(state.pending) !== '' && { askedBy: askedBy(state.pending).replace(/: $/, '') }), label: plain(state.pending.label, 120), expect: plain(state.pending.expect, 160), note: state.pending.note === undefined ? undefined : plain(state.pending.note, 160) },
-    lastResult: state.outcome === null ? null : { label: plain(state.outcome.label, 100), ok: state.outcome.ok, detail: plain(state.outcome.detail, 200), lines: (state.outcome.lines ?? []).slice(0, 12).map(line => modelLine(line, 160)) },
+    waiting: state.pending === null ? null : { ...(askedBy(state.pending) !== '' && { askedBy: askedBy(state.pending).replace(/: $/, '') }), label: plain(state.pending.label, 120), expect: plain(state.pending.expect, 160), note: state.pending.note === undefined ? undefined : modelLine(state.pending.note, 160) },
+    lastResult: state.outcome === null ? null : { label: plain(state.outcome.label, 100), ok: state.outcome.ok, detail: modelLine(state.outcome.detail, 200), lines: (state.outcome.lines ?? []).slice(0, 12).map(line => modelLine(line, 160)) },
     entries,
     entryCount: all.length,
     entriesNote: entries.length < (words.length === 0 ? all.length : entries.length) || (words.length > 0 && entries.length === 40) ? 'the list is cut: pass filter (words in an id or label) to find other entries' : undefined,
@@ -285,7 +285,7 @@ async function settlePending(deps: ModelToolDeps, tool: string, id: string, aske
     return { status: 'waiting', text: `Started: "${plain(pending.label, 100)}". It is still running after ${FINISH_MS / 1000} s; call console_state later to see the result.` }
   }
 
-  return { status: 'done', text: `${done === null ? 'Ran' : done.ok ? 'Done' : 'Failed'}: ${plain(pending.label, 100)}.${done === null ? '' : ` ${plain(done.detail, 200)}`}` }
+  return { status: 'done', text: `${done === null ? 'Ran' : done.ok ? 'Done' : 'Failed'}: ${plain(pending.label, 100)}.${done === null ? '' : ` ${modelLine(done.detail, 200)}`}` }
 }
 
 /** One tool call. Always answers with text; a refusal says why and which setting to change. */
@@ -383,7 +383,7 @@ export async function callTool(name: string, input: Record<string, unknown>, dep
 
       say(state, name, `run ${id}`, done === null || done.ok ? 'ok' : 'error', done?.detail ?? '')
 
-      return done === null ? `Ran ${id}.` : `${done.ok ? 'Done' : 'Failed'}: ${plain(done.label, 100)}. ${plain(done.detail, 200)}${(done.lines ?? []).length > 0 ? `\n${(done.lines ?? []).slice(0, 12).map(line => modelLine(line, 160)).join('\n')}` : ''}`
+      return done === null ? `Ran ${id}.` : `${done.ok ? 'Done' : 'Failed'}: ${plain(done.label, 100)}. ${modelLine(done.detail, 200)}${(done.lines ?? []).length > 0 ? `\n${(done.lines ?? []).slice(0, 12).map(line => modelLine(line, 160)).join('\n')}` : ''}`
     }
 
     const settled = await settlePending(deps, name, `run ${id}`, askedAt)

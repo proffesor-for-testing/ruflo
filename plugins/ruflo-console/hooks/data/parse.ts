@@ -15,7 +15,8 @@ const ID = /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$/
 
 // Whole escape sequences go first (the CLI colours its output; a hostile file may carry a hyperlink or a title): stripping only the ESC byte
 // would leave `[1m` or `]8;;https://…` in the text. Written as \u escapes so no invisible character sits in this source.
-export const ESCAPES = new RegExp('\\u001b\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\)|\\u009d[^\\u0007\\u009c]*[\\u0007\\u009c]|(?:\\u001b\\[|\\u009b)[0-9;?]*[ -/]*[@-~]', 'g')
+// The OSC bodies stop at the next introducer, so a run of them without a terminator stays linear (each match cannot scan past the next).
+export const ESCAPES = new RegExp('\\u001b\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\)|\\u009d[^\\u0007\\u009c\\u009d]*[\\u0007\\u009c]|(?:\\u001b\\[|\\u009b)[0-9;?]*[ -/]*[@-~]', 'g')
 // Controls, DEL, C1, soft hyphen, combining grapheme joiner, Arabic letter mark, zero-width and bidi characters, word joiner, invisible
 // operators and the deprecated format characters, variation selectors, Hangul fillers, BOM, interlinear annotation marks and the tag
 // block: nothing a person could read, all of them fit for hiding or reordering text. The set screen.ts strips before it scans (less the
