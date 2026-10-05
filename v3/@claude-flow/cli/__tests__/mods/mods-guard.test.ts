@@ -321,6 +321,12 @@ describe('#3698 root deletion guard parity', () => {
     ['echo "`r\\`\\`m -rf /`"', true],
     ["sh -c 'r``m -rf /'", true],
     ['echo "`date`" /tmp', false],
+    // A # right after a substitution is part of the word, not a comment; an unterminated backtick is text.
+    ['`true`#x; rm -rf /', true],
+    ['echo a`true`#b; rm -rf /', true],
+    ['echo it` costs; rm -rf /', true],
+    ['echo "a ` b"; rm -rf /', true],
+    ['echo "a ` b"; ls /', false],
     ['echo `ls` /tmp', false],
     ['format c: /q /y', true],
     ['del /s /q c:\\', true],

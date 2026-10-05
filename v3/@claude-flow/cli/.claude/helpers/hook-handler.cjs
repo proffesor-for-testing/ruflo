@@ -520,7 +520,7 @@ const handlers = {
         redirect = false
         if (quote) {
           if (char === quote) quote = ''
-          else if (quote === '"' && char === '\x60') {
+          else if (quote === '"' && char === '\x60' && command.indexOf('\x60', i + 1) > i) {
             const [end, denied] = substitution(i + 1, true)
             if (denied) return true
             i = end
@@ -536,12 +536,13 @@ const handlers = {
         if (char === '\\' && i + 1 < command.length) {
           const next = command[++i]
           if (next !== '\n') { word += next; started = true }
-        } else if (char === '\x60') {
+        } else if (char === '\x60' && command.indexOf('\x60', i + 1) > i) {
           // Command substitution: scan the body as its own command; the substitution
-          // stays inside the enclosing word, so the rm being parsed keeps its state.
+          // stays inside the enclosing word, so the rm being parsed keeps its state,
+          // and the word has started (a # right after it is not a comment).
           const [end, denied] = substitution(i + 1, false)
           if (denied) return true
-          i = end
+          i = end; started = true
         } else if (char === '$' && (command[i + 1] === "'" || command[i + 1] === '"')) {
           // ANSI-C ($'...') and locale ($"...") quoting: the $ is not part of the word.
         } else if (char === '"' || char === "'") {
