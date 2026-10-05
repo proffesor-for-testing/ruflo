@@ -481,7 +481,7 @@ const handlers = {
         if (!started) return false
         // Literal shell strings (e.g. sh -c 'rm -rf /') also carried the old guard.
         // Bound rescanning to four levels; beyond that retain its conservative check.
-        if (word.includes('rm') && /[\s;&|()\x60]/.test(word)) {
+        if (/[\s;&|()\x60]/.test(word)) {
           if (depth < 4 ? hasRootDelete(word, depth + 1) : word.includes('rm -rf /')) return true
         }
         if (!inRm) inRm = word === 'rm' || word.endsWith('/rm')
@@ -494,6 +494,21 @@ const handlers = {
         word = ''; started = false
         return inRm && recursive && force && root
       }
+      // A command substitution's body, from just after its opening backtick. Bash removes a
+      // backslash only before $, a backtick or a backslash (and " inside double quotes) and
+      // drops backslash-newline; any other backslash stays for the nested scan.
+      const substitution = (from, inDouble) => {
+        let body = '', j = from
+        for (; j < command.length && command[j] !== '\x60'; j++) {
+          const next = command[j + 1]
+          if (command[j] === '\\' && j + 1 < command.length) {
+            if (next === '\n') { j++; continue }
+            if (next === '$' || next === '\x60' || next === '\\' || (inDouble && next === '"')) { body += next; j++; continue }
+          }
+          body += command[j]
+        }
+        return [j, depth < 4 ? hasRootDelete(body, depth + 1) : body.includes('rm -rf /')]
+      }
       const finishCommand = () => {
         const denied = inRm && recursive && force && root
         inRm = optionsEnded = recursive = force = root = false
@@ -505,6 +520,11 @@ const handlers = {
         redirect = false
         if (quote) {
           if (char === quote) quote = ''
+          else if (quote === '"' && char === '\x60') {
+            const [end, denied] = substitution(i + 1, true)
+            if (denied) return true
+            i = end
+          }
           else if (quote === '"' && char === '\\' && i + 1 < command.length &&
             (command[i + 1] === '"' || command[i + 1] === '\\' || command[i + 1] === '$' ||
               command.charCodeAt(i + 1) === 96 || command[i + 1] === '\n')) {
@@ -519,12 +539,9 @@ const handlers = {
         } else if (char === '\x60') {
           // Command substitution: scan the body as its own command; the substitution
           // stays inside the enclosing word, so the rm being parsed keeps its state.
-          let body = ''
-          for (i++; i < command.length && command[i] !== '\x60'; i++) {
-            if (command[i] === '\\' && i + 1 < command.length) i++
-            body += command[i]
-          }
-          if (depth < 4 ? hasRootDelete(body, depth + 1) : body.includes('rm -rf /')) return true
+          const [end, denied] = substitution(i + 1, false)
+          if (denied) return true
+          i = end
         } else if (char === '$' && (command[i + 1] === "'" || command[i + 1] === '"')) {
           // ANSI-C ($'...') and locale ($"...") quoting: the $ is not part of the word.
         } else if (char === '"' || char === "'") {

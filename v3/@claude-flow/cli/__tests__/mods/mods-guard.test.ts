@@ -314,6 +314,13 @@ describe('#3698 root deletion guard parity', () => {
     ['rm -rf /tmp/x `:` /', true],
     ['rm -r `:` -f /', true],
     ['git commit -m "fix `rm` docs"', false],
+    // A substitution body is unescaped as bash does it, and one inside double quotes is a substitution too.
+    ['echo `rm -rf \\( /`', true],
+    ['echo `rm -rf \\\n/`', true],
+    ['rm -rf "/`true`"', true],
+    ['echo "`r\\`\\`m -rf /`"', true],
+    ["sh -c 'r``m -rf /'", true],
+    ['echo "`date`" /tmp', false],
     ['echo `ls` /tmp', false],
     ['format c: /q /y', true],
     ['del /s /q c:\\', true],
