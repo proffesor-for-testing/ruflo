@@ -149,13 +149,19 @@ const leaksSecret = (raw: unknown, cleaned: string): boolean => (typeof raw === 
 
 const textOf = (value: unknown): string => (typeof value === 'string' ? plain(value, MAX_TEXT).trim() : '')
 
+// Zero-width, bidi and other format characters: nothing a person reads, and enough to split a code so a pattern misses it.
+const INVISIBLE = new RegExp('[\\u00ad\\u034f\\u061c\\u115f\\u1160\\u17b4\\u17b5\\u180b-\\u180f\\u200b-\\u200f\\u202a-\\u202e\\u2060-\\u206f\\u3164\\ufe00-\\ufe0f\\ufeff\\uffa0\\ufff9-\\ufffb]|[\\u{e0000}-\\u{e0fff}]', 'gu')
+
 const SECRET_LINE = '(a line that looks like a secret: not shown)'
 
 /** One line of console text as the model reads it: plain, any invite code masked, and withheld whole when it holds a secret shape. */
 const modelLine = (line: string, max: number): string => {
-  const text = maskInvites(plain(line, max))
+  // Invisible characters go first (not to a space, as plain() does), and codes are masked before the cut too, so an invite split
+  // by a zero-width character or cut by the length limit is still masked.
+  const joined = line.replace(INVISIBLE, '')
+  const text = maskInvites(plain(maskInvites(joined), max))
 
-  return hasSecret(line) || hasSecret(text) ? SECRET_LINE : text
+  return hasSecret(line) || hasSecret(joined) || hasSecret(text) ? SECRET_LINE : text
 }
 
 /** The console's state for the model: bounded, with control characters stripped and secrets withheld. */
@@ -165,15 +171,15 @@ function stateJson(deps: ModelToolDeps, filter: string): string {
   const now = Date.now()
   const screen = viewText({ state, nowMs: now, columns: 90, act: control.actions }, state.view).split('\n').map(line => modelLine(line, 160)).join('\n').slice(0, SCREEN_MAX)
   const words = filter.toLowerCase().split(/\s+/).filter(word => word !== '')
-  const all = paletteEntries(state, now).map(entry => ({ id: entry.id, label: plain(entry.label, 90) }))
+  const all = paletteEntries(state, now).map(entry => ({ id: entry.id, label: modelLine(entry.label, 90) }))
   const entries = (words.length === 0 ? all : all.filter(entry => words.every(word => `${entry.id} ${entry.label}`.toLowerCase().includes(word)))).slice(0, words.length === 0 ? 60 : 40)
 
   return JSON.stringify({
     view: state.view,
     title: VIEWS.find(view => view.id === state.view)?.label ?? state.view,
     screen,
-    waiting: state.pending === null ? null : { ...(askedBy(state.pending) !== '' && { askedBy: askedBy(state.pending).replace(/: $/, '') }), label: plain(state.pending.label, 120), expect: plain(state.pending.expect, 160), note: state.pending.note === undefined ? undefined : modelLine(state.pending.note, 160) },
-    lastResult: state.outcome === null ? null : { label: plain(state.outcome.label, 100), ok: state.outcome.ok, detail: modelLine(state.outcome.detail, 200), lines: (state.outcome.lines ?? []).slice(0, 12).map(line => modelLine(line, 160)) },
+    waiting: state.pending === null ? null : { ...(askedBy(state.pending) !== '' && { askedBy: askedBy(state.pending).replace(/: $/, '') }), label: modelLine(state.pending.label, 120), expect: modelLine(state.pending.expect, 160), note: state.pending.note === undefined ? undefined : modelLine(state.pending.note, 160) },
+    lastResult: state.outcome === null ? null : { label: modelLine(state.outcome.label, 100), ok: state.outcome.ok, detail: modelLine(state.outcome.detail, 200), lines: (state.outcome.lines ?? []).slice(0, 12).map(line => modelLine(line, 160)) },
     entries,
     entryCount: all.length,
     entriesNote: entries.length < (words.length === 0 ? all.length : entries.length) || (words.length > 0 && entries.length === 40) ? 'the list is cut: pass filter (words in an id or label) to find other entries' : undefined,
@@ -242,7 +248,7 @@ async function settlePending(deps: ModelToolDeps, tool: string, id: string, aske
     control.runner.cancel()
     say(state, tool, `${id}: needs ${NEEDS[kind]}`, 'denied', pending.label)
 
-    return { status: 'refused', text: `"${plain(pending.label, 80)}" is a ${kind} action and control is set to "${level}" (it needs "${NEEDS[kind]}"). The person can raise it in Settings → Claude control. Nothing ran.` }
+    return { status: 'refused', text: `"${modelLine(pending.label, 80)}" is a ${kind} action and control is set to "${level}" (it needs "${NEEDS[kind]}"). The person can raise it in Settings → Claude control. Nothing ran.` }
   }
 
   const budget = kind === 'read' ? Infinity : SESSION_BUDGET[kind]
@@ -253,7 +259,7 @@ async function settlePending(deps: ModelToolDeps, tool: string, id: string, aske
     control.runner.cancel()
     say(state, tool, `${id}: ${kind} budget used`, 'denied', pending.label)
 
-    return { status: 'refused', text: `the session budget for ${kind} actions (${budget}) is used up, so "${plain(pending.label, 80)}" was not queued. Tell the person what you wanted to do and let them do it in the console. Nothing ran.` }
+    return { status: 'refused', text: `the session budget for ${kind} actions (${budget}) is used up, so "${modelLine(pending.label, 80)}" was not queued. Tell the person what you wanted to do and let them do it in the console. Nothing ran.` }
   }
 
   state.control.used[kind] = used + 1
@@ -261,7 +267,7 @@ async function settlePending(deps: ModelToolDeps, tool: string, id: string, aske
   if (confirmOf(ai.modelConfirm) === 'ask' || ALWAYS_ASK.includes(kind) || over) {
     say(state, tool, id, 'waiting', pending.label)
 
-    return { status: 'waiting', text: `Waiting for the person to confirm in the console: "${plain(pending.label, 100)}" (${kind}${over ? `; the session budget of ${budget} auto-confirmed ${kind} actions is used up` : ''}). Expect: ${plain(pending.expect, 160)}. Do not repeat it; call console_state later to see the result.` }
+    return { status: 'waiting', text: `Waiting for the person to confirm in the console: "${modelLine(pending.label, 100)}" (${kind}${over ? `; the session budget of ${budget} auto-confirmed ${kind} actions is used up` : ''}). Expect: ${plain(pending.expect, 160)}. Do not repeat it; call console_state later to see the result.` }
   }
 
   // Mission Control reports its own actions on `last`, the rest on `outcome`: whichever moved is what happened.
@@ -282,10 +288,10 @@ async function settlePending(deps: ModelToolDeps, tool: string, id: string, aske
   if (!isFinished) {
     say(state, tool, id, 'waiting', 'still running')
 
-    return { status: 'waiting', text: `Started: "${plain(pending.label, 100)}". It is still running after ${FINISH_MS / 1000} s; call console_state later to see the result.` }
+    return { status: 'waiting', text: `Started: "${modelLine(pending.label, 100)}". It is still running after ${FINISH_MS / 1000} s; call console_state later to see the result.` }
   }
 
-  return { status: 'done', text: `${done === null ? 'Ran' : done.ok ? 'Done' : 'Failed'}: ${plain(pending.label, 100)}.${done === null ? '' : ` ${modelLine(done.detail, 200)}`}` }
+  return { status: 'done', text: `${done === null ? 'Ran' : done.ok ? 'Done' : 'Failed'}: ${modelLine(pending.label, 100)}.${done === null ? '' : ` ${modelLine(done.detail, 200)}`}` }
 }
 
 /** One tool call. Always answers with text; a refusal says why and which setting to change. */
@@ -348,7 +354,7 @@ export async function callTool(name: string, input: Record<string, unknown>, dep
 
       if (leaksSecret(input.value, value)) return refuse(`set ${field}`, SECRET_REFUSAL)
 
-      if (state.pending !== null) return refuse(`set ${field}`, `an action is already waiting for the person ("${plain(state.pending.label, 80)}"). Do not change fields until they answer.`)
+      if (state.pending !== null) return refuse(`set ${field}`, `an action is already waiting for the person ("${modelLine(state.pending.label, 80)}"). Do not change fields until they answer.`)
 
       const askedAt = Date.now()
       const problem = setField(deps, field, value)
@@ -370,7 +376,7 @@ export async function callTool(name: string, input: Record<string, unknown>, dep
     if (leaksSecret(input.text, text)) return refuse(`run ${id}`, SECRET_REFUSAL)
 
     // The person's own waiting action is theirs to answer: never replaced, never cleared.
-    if (state.pending !== null) return refuse(`run ${id}`, `an action is already waiting for the person ("${plain(state.pending.label, 80)}"). Do not run another until they answer.`)
+    if (state.pending !== null) return refuse(`run ${id}`, `an action is already waiting for the person ("${modelLine(state.pending.label, 80)}"). Do not run another until they answer.`)
 
     const askedAt = state.outcome?.atMs ?? 0
 
@@ -383,7 +389,7 @@ export async function callTool(name: string, input: Record<string, unknown>, dep
 
       say(state, name, `run ${id}`, done === null || done.ok ? 'ok' : 'error', done?.detail ?? '')
 
-      return done === null ? `Ran ${id}.` : `${done.ok ? 'Done' : 'Failed'}: ${plain(done.label, 100)}. ${modelLine(done.detail, 200)}${(done.lines ?? []).length > 0 ? `\n${(done.lines ?? []).slice(0, 12).map(line => modelLine(line, 160)).join('\n')}` : ''}`
+      return done === null ? `Ran ${id}.` : `${done.ok ? 'Done' : 'Failed'}: ${modelLine(done.label, 100)}. ${modelLine(done.detail, 200)}${(done.lines ?? []).length > 0 ? `\n${(done.lines ?? []).slice(0, 12).map(line => modelLine(line, 160)).join('\n')}` : ''}`
     }
 
     const settled = await settlePending(deps, name, `run ${id}`, askedAt)
@@ -392,7 +398,7 @@ export async function callTool(name: string, input: Record<string, unknown>, dep
   } catch (error) {
     say(state, name, name, 'error', error instanceof Error ? error.message : 'failed')
 
-    return `Failed: ${plain(error instanceof Error ? error.message : 'the console action failed', 160)}`
+    return `Failed: ${modelLine(error instanceof Error ? error.message : 'the console action failed', 160)}`
   } finally {
     state.control.viaModel = false
     control.host.invalidate()

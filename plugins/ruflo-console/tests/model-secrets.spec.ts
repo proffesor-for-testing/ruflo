@@ -114,3 +114,44 @@ describe('the shared escape set stays linear', () => {
     expect(Date.now() - t0).toBeLessThan(1_000)
   })
 })
+
+describe('labels the person typed never carry a secret to the model', () => {
+  const labelled = async () => {
+    const { state } = await stateAfter('memory list', '[OK] nothing\n')
+    const control = { host: { invalidate: () => undefined, after: () => ({ cancel: () => undefined }) }, setView: () => undefined, open: async () => undefined, actions: deepNoop(), runner: {} }
+
+    return { state, deps: { state, control } as unknown as ModelToolDeps }
+  }
+
+  it('waiting.label, waiting.expect and lastResult.label withhold a token and mask an invite code', async () => {
+    const { state, deps } = await labelled()
+
+    state.outcome = { label: `store "${TOKEN}"`, ok: true, verified: 'n/a', detail: '', atMs: Date.now() }
+    state.pending = { label: `send ${CODE} to the room`, args: [], expect: `stored ${TOKEN}`, askedAtMs: Date.now() }
+    const answer = await callTool('console_state', {}, deps)
+
+    expect(answer).not.toContain(TOKEN)
+    expect(answer).not.toContain(CODE)
+  })
+
+  it('the "already waiting" refusal does not quote a token from the waiting label', async () => {
+    const { state, deps } = await labelled()
+
+    state.pending = { label: `store "${TOKEN}"`, args: [], expect: 'x', askedAtMs: Date.now() }
+    const answer = await callTool('console_run', { id: 'mission-open' }, deps)
+
+    expect(answer).toMatch(/already waiting/)
+    expect(answer).not.toContain(TOKEN)
+  })
+
+  it('an invite split by a zero-width character, or cut by the length limit, is still masked', async () => {
+    const { state, deps } = await labelled()
+    const split = `${CODE.slice(0, 8)}\u200b${CODE.slice(8)}`
+
+    state.outcome = { label: 'joined', ok: true, verified: 'n/a', detail: `${'x'.repeat(190)} ${CODE}`, atMs: Date.now(), lines: [`code ${split}`] }
+    const answer = await callTool('console_state', {}, deps)
+
+    expect(answer).not.toContain(CODE.slice(3, 9))
+    expect(answer).not.toContain(CODE.slice(9, 15))
+  })
+})
