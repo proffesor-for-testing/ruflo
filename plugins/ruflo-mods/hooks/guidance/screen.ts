@@ -10,19 +10,19 @@ const SECRETS: readonly (readonly [string, RegExp])[] = [
   ['slack token', /\b(?:xox[abeprs]-|xapp-\d-)[A-Za-z0-9-]{10,}/],
   ['google api key', /\bAIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])/],
   ['anthropic or openai key', /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{24,}/],
-  ['jwt', /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/],
+  ['jwt', /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/],
   ['bearer token', /\bBearer\s+[A-Za-z0-9._~+/=-]{24,}/],
   // The keyword ends an _ or - separated name (GITHUB_TOKEN=, "client_secret":), optionally then _key / _access_key
   // (aws_secret_access_key =). Names that only start with it (TOKEN_URL=, MAX_TOKENS=) and all-digit values do not
   // match, and nothing after the keyword can backtrack against it (linear on 'token_token_...').
-  ['key assignment', /(?<![A-Za-z0-9_-])(?:[A-Za-z0-9]+[_-])*(?:api[_-]?key|secret|token|passw(?:or)?d|credential)s?(?:[_-](?:access[_-]?)?key)?["']?\s*[:=]\s*["']?(?=[A-Za-z0-9/+=_.-]*[A-Za-z])[A-Za-z0-9/+=_.-]{16,}/i],
+  ['key assignment', /(?<![A-Za-z0-9_-])-{0,2}(?:[A-Za-z0-9]+[_-])*(?:api[_-]?key|secret|token|passw(?:or)?d|credential)s?(?:[_-](?:access[_-]?)?key)?["']?\s*[:=]\s*["']?(?=[A-Za-z0-9/+=_.-]*[A-Za-z])[A-Za-z0-9/+=_.-]{16,}/i],
 ]
 
 const INJECTION: readonly (readonly [string, RegExp])[] = [
   ['override instructions', /\b(?:ignore|disregard|forget|override)\b[^.\n]{0,40}\b(?:previous|prior|above|earlier|all|any|system)\b[^.\n]{0,30}\b(?:instructions?|rules?|prompts?|guidelines?)\b/i],
   ['role reassignment', /\byou are (?:now|no longer)\b|\bact as (?:an? )?(?:unrestricted|jailbroken)\b/i],
   ['new instructions', /\b(?:new|updated|real) (?:system )?instructions?\s*:/i],
-  ['fake role tags', /<\/?\s*(?:system|assistant|developer|instructions?)\s*>|^\s*(?:system|assistant)\s*:/im],
+  ['fake role tags', /<\/?\s*(?:system|assistant|developer|instructions?)\s*>|^[ \t]*(?:system|assistant)[ \t]*:/im],
   ['concealment', /\bdo not (?:tell|inform|mention|reveal)[^.\n]{0,30}\b(?:user|human|operator)\b/i],
   ['exfiltration', /\b(?:exfiltrate|send|post|upload)\b[^.\n]{0,50}\b(?:secrets?|credentials?|tokens?|api keys?|\.env)\b/i],
   ['shell pipe', /\b(?:curl|wget)\b[^|\n]{0,200}\|\s*(?:sudo\s+)?(?:ba|z)?sh\b/i],
@@ -33,7 +33,11 @@ const INJECTION: readonly (readonly [string, RegExp])[] = [
 const INVISIBLE = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029\p{Default_Ignorable_Code_Point}]/gu
 
 /** The text the rules see: invisible characters removed, then NFKC (fullwidth and compatibility forms fold to ASCII). */
-export const bare = (text: string) => text.replace(INVISIBLE, '').normalize('NFKC').replace(INVISIBLE, '')
+export const bare = (text: string) =>
+  text.replace(INVISIBLE, '').normalize('NFKC').replace(INVISIBLE, '')
+    // One space or newline per whitespace run: padding cannot stretch a match across a window boundary, and a
+    // rule's \s* or ^ cannot go quadratic on a run of blank lines.
+    .replace(/\s+/g, run => (run.includes('\n') ? '\n' : ' '))
 
 const WINDOW = 20_000
 // Far longer than any rule can span, so a match is never split across two windows.
