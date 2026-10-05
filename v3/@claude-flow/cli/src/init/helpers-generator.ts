@@ -459,14 +459,15 @@ const ROOT_DELETE_CHECK_SOURCE = String.raw`function hasRootDelete(command, dept
     if (!started) return false
     // Literal shell strings (e.g. sh -c 'rm -rf /') also carried the old guard.
     // Bound rescanning to four levels; beyond that retain its conservative check.
-    if (word.includes('rm') && /[\s;&|()]/.test(word)) {
+    if (word.includes('rm') && /[\s;&|()\x60]/.test(word)) {
       if (depth < 4 ? hasRootDelete(word, depth + 1) : word.includes('rm -rf /')) return true
     }
     if (!inRm) inRm = word === 'rm' || word.endsWith('/rm')
     else if (!optionsEnded && word === '--') optionsEnded = true
     else if (!optionsEnded && word.startsWith('-')) {
-      recursive = recursive || word === '--recursive' || /^-[a-z]*r[a-z]*$/.test(word)
-      force = force || word === '--force' || /^-[a-z]*f[a-z]*$/.test(word)
+      // GNU getopt accepts any unambiguous long-option prefix: --r, --recur, --forc.
+      recursive = recursive || (word.length > 2 && '--recursive'.startsWith(word)) || /^-[a-z]*r[a-z]*$/.test(word)
+      force = force || (word.length > 2 && '--force'.startsWith(word)) || /^-[a-z]*f[a-z]*$/.test(word)
     } else root = root || isRoot(word)
     word = ''; started = false
     return inRm && recursive && force && root
@@ -493,17 +494,19 @@ const ROOT_DELETE_CHECK_SOURCE = String.raw`function hasRootDelete(command, dept
     if (char === '\\' && i + 1 < command.length) {
       const next = command[++i]
       if (next !== '\n') { word += next; started = true }
+    } else if (char === '$' && (command[i + 1] === "'" || command[i + 1] === '"')) {
+      // ANSI-C ($'...') and locale ($"...") quoting: the $ is not part of the word.
     } else if (char === '"' || char === "'") {
       quote = char; started = true
     } else if (char === '#' && !started) {
       while (i < command.length && command[i] !== '\n') i++
       if (finishCommand()) return true
     } else if (char === ' ' || char === '\t' || char === '\r' || char === '\n' ||
-      ';|&()<>'.includes(char)) {
+      ';|&()<>\x60'.includes(char)) {
       if (finishWord()) return true
       // Redirections separate words, but later operands still belong to rm.
       redirect = char === '<' || char === '>'
-      if (!redirectionAmpersand && (char === '\n' || ';|&()'.includes(char)) && finishCommand()) return true
+      if (!redirectionAmpersand && (char === '\n' || ';|&()\x60'.includes(char)) && finishCommand()) return true
     } else {
       word += char; started = true
     }
