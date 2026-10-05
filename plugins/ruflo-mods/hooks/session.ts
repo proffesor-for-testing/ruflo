@@ -24,7 +24,9 @@ export const HEARTBEAT_PATH = '.claude-flow/mods/session.json'
 async function helperHonours($: EngineInterface): Promise<boolean> {
   const root = await $.session.root().catch(() => undefined)
   const home = await $.env.get('HOME').catch(() => undefined)
-  for (const base of new Set([root, home])) {
+  // The generated Windows command falls back to %USERPROFILE%\.claude\helpers when the project has no copy.
+  const profile = await $.env.get('USERPROFILE').catch(() => undefined)
+  for (const base of new Set([root, home, profile])) {
     if (!base) continue
     const path = `${base}/${HELPER}`
     if (!(await $.fs.exists(path).catch(() => true))) continue

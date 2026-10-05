@@ -203,3 +203,43 @@ describe('register', () => {
     expect((await $.command.run({ command: 'ruflo-console', args: 'mods', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })).text).toBe(alias.text)
   })
 })
+
+/** settings.json as `ruflo init` wrote it before the hook-handler.cjs switch (Feb 2026). */
+const LEGACY = {
+  hooks: {
+    UserPromptSubmit: [{ hooks: [{ type: 'command', command: 'npx @claude-flow/cli@latest hooks route --task "$PROMPT"' }] }],
+    PostToolUse: [{ matcher: 'Write|Edit|MultiEdit', hooks: [{ type: 'command', command: 'npx @claude-flow/cli@latest hooks post-edit --file "$TOOL_INPUT_file_path" --success "${TOOL_SUCCESS:-true}"' }] }],
+  },
+}
+
+describe('ownership: the legacy CLI hooks route (pre-hook-handler init)', () => {
+  test('a legacy `npx @claude-flow/cli hooks route` hook (no handshake) keeps route; the mod does not route too', async ($, on) => {
+    const w = world(on, LEGACY)
+    const seen: (readonly string[] | undefined)[] = []
+    on('prompt.submit', ($, e) => (seen.push(e.context), { text: e.text }))
+    await $.session.start(START)
+    await $.prompt.submit(prompt('implement the api'))
+
+    expect(w.env.get('RUFLO_MODS_OWNS') ?? '').not.toContain('route')
+    expect(seen[0]).toBeUndefined()
+  })
+})
+
+/** settings-generator hookCmd on Windows: project copy, else %USERPROFILE%'s. */
+const WIN_ROUTE = {
+  hooks: {
+    UserPromptSubmit: [{ hooks: [{ command: 'cmd /c "IF EXIST \\"%CLAUDE_PROJECT_DIR%\\.claude\\helpers\\hook-handler.cjs\\" (node \\"%CLAUDE_PROJECT_DIR%\\.claude\\helpers\\hook-handler.cjs\\" route) ELSE (node \\"%USERPROFILE%\\.claude\\helpers\\hook-handler.cjs\\" route)"' }] }],
+  },
+}
+
+describe('ownership: Windows %USERPROFILE% helper', () => {
+  test('an old helper under %USERPROFILE% (HOME unset, as on Windows) makes the mod stand down for route', async ($, on) => {
+    // A POSIX-style path: the test engine resolves paths as POSIX (C:/... would read as relative and never exist).
+    const PROFILE = '/c/Users/me'
+    const w = world(on, WIN_ROUTE, { [`${PROFILE}/.claude/helpers/hook-handler.cjs`]: '// an older helper' })
+    w.env.set('USERPROFILE', PROFILE)
+    await $.session.start(START)
+
+    expect(w.env.get('RUFLO_MODS_OWNS') ?? '').not.toContain('route')
+  })
+})
