@@ -4,15 +4,16 @@
  */
 
 const SECRETS: readonly (readonly [string, RegExp])[] = [
-  ['private key', /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
+  ['private key', /-----BEGIN [A-Z ]*PRIVATE KEY(?: BLOCK)?-----/],
   ['aws access key', /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/],
   ['github token', /\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})\b/],
-  ['slack token', /\bxox[abprs]-[A-Za-z0-9-]{10,}/],
-  ['google api key', /\bAIza[0-9A-Za-z_-]{35}\b/],
+  ['slack token', /\b(?:xox[abeprs]-|xapp-\d-)[A-Za-z0-9-]{10,}/],
+  ['google api key', /\bAIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])/],
   ['anthropic or openai key', /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{24,}/],
   ['jwt', /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/],
   ['bearer token', /\bBearer\s+[A-Za-z0-9._~+/=-]{24,}/],
-  ['key assignment', /\b(?:api[_-]?key|secret|token|passw(?:or)?d|credential)s?["']?\s*[:=]\s*["']?[A-Za-z0-9/+=_.-]{16,}/i],
+  // The keyword may sit inside an _ or - separated name: GITHUB_TOKEN=, aws_secret_access_key =, "client_secret":.
+  ['key assignment', /(?<![A-Za-z0-9_-])(?:[A-Za-z0-9]+[_-])*(?:api[_-]?key|secret|token|passw(?:or)?d|credential)s?(?:[_-][A-Za-z0-9]+)*["']?\s*[:=]\s*["']?[A-Za-z0-9/+=_.-]{16,}/i],
 ]
 
 const INJECTION: readonly (readonly [string, RegExp])[] = [
@@ -25,17 +26,41 @@ const INJECTION: readonly (readonly [string, RegExp])[] = [
   ['shell pipe', /\b(?:curl|wget)\b[^|\n]{0,200}\|\s*(?:sudo\s+)?(?:ba|z)?sh\b/i],
 ]
 
-// C0/C1 controls (keeping tab and newline), DEL, zero-width and bidi override characters.
-const INVISIBLE = new RegExp('[\\u0000-\\u0008\\u000b-\\u001f\\u007f-\\u009f\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u2064\\ufeff]', 'g')
+// C0/C1 controls (keeping tab and newline), DEL, line/paragraph separators and every default-ignorable code point: zero-width,
+// bidi overrides and isolates, soft hyphen, combining grapheme joiner, variation selectors and tag characters, so none can split a phrase.
+const INVISIBLE = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029\p{Default_Ignorable_Code_Point}]/gu
 
-const bare = (text: string) => (text.length > 20_000 ? text.slice(0, 20_000) : text).replace(INVISIBLE, '')
+/** The text the rules see: invisible characters removed, then NFKC (fullwidth and compatibility forms fold to ASCII). */
+export const bare = (text: string) => text.replace(INVISIBLE, '').normalize('NFKC').replace(INVISIBLE, '')
+
+const WINDOW = 20_000
+// Far longer than any rule can span, so a match is never split across two windows.
+const OVERLAP = 1_024
+
+/**
+ * The bare text in overlapping windows. The whole text is screened, not a prefix: padding must not push a phrase or a secret past
+ * the screen. Each rule runs per window, so the cost stays linear in the input.
+ */
+export function windows(text: string): string[] {
+  const clean = bare(text)
+  if (clean.length <= WINDOW) return [clean]
+  const out: string[] = []
+  for (let start = 0; start < clean.length; start += WINDOW - OVERLAP) {
+    out.push(clean.slice(start, start + WINDOW))
+    if (start + WINDOW >= clean.length) break
+  }
+  return out
+}
+
+/** Whether `re` matches anywhere in the screened windows. */
+export const anyWindow = (parts: readonly string[], re: RegExp) => parts.some(part => re.test(part))
 
 export type Findings = { readonly secrets: readonly string[]; readonly injection: readonly string[] }
 
-const names = (rules: readonly (readonly [string, RegExp])[], text: string) => rules.filter(([, re]) => re.test(text)).map(([name]) => name)
+const names = (rules: readonly (readonly [string, RegExp])[], parts: readonly string[]) => rules.filter(([, re]) => anyWindow(parts, re)).map(([name]) => name)
 
-/** Names of every secret shape and injection phrase found in `text`. Cost is linear in the capped input. */
+/** Names of every secret shape and injection phrase found in `text`. Cost is linear in the input. */
 export function scan(text: string): Findings {
-  const bounded = bare(text)
-  return { secrets: names(SECRETS, bounded), injection: names(INJECTION, bounded) }
+  const parts = windows(text)
+  return { secrets: names(SECRETS, parts), injection: names(INJECTION, parts) }
 }
