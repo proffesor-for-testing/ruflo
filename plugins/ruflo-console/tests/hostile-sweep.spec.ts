@@ -254,6 +254,16 @@ describe('lab readers a person runs', () => {
     expect(lines.filter(line => SWEEP.test(line))).toEqual([])
     expect(lines[1]).toContain('p99 0.25')
   })
+
+  it('a real benchmark, whose times the CLI prints as text with a unit, keeps them (performance.ts printJson)', () => {
+    const real = { suite: 'wasm', iterations: 100, totalTime: '1.23s', results: [{ operation: 'Flash Attention', mean: '0.45ms', p95: '0.61ms', p99: '0.80ms', improvement: '2.10x' }, { operation: 'SONA', mean: 'N/A', p95: 'N/A', p99: 'N/A', improvement: 'N/A' }] }
+    const lines = benchReader(JSON.stringify(real), '', newState({}))
+
+    expect(lines[0]).toBe('suite wasm · 100 iterations · 1.23s')
+    expect(lines[1]).toContain('mean 0.45ms · p95 0.61ms · p99 0.80ms · 2.10x')
+    expect(lines[2]).toContain('mean N/A')
+    expect(benchReader(JSON.stringify({ ...real, totalTime: '\u001b]8;;x\u0007s\u202e1' }), '', newState({}))[0]).not.toMatch(/[\u001b\u202e]/)
+  })
 })
 
 describe('round 4: the readers the round-4 review found drawing raw', () => {

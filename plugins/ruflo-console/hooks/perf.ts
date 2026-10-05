@@ -83,6 +83,9 @@ export const metricsReader: Reader = (stdout, stderr, state) => {
   ]
 }
 
+/** A benchmark time: the CLI prints them as text with their unit ("1.23s", "0.45ms", "N/A"), shown cleaned; a bare number is bounded. */
+const timeOf = (value: unknown, fallback = 'n/a'): string => (typeof value === 'string' ? plain(value, 12) || fallback : measureOf(value, fallback))
+
 /** `performance benchmark --output json`: each operation's mean, p95 and p99. */
 export const benchReader: Reader = (stdout, stderr) => {
   const record = recordOf(jsonAfter(stdout))
@@ -91,8 +94,8 @@ export const benchReader: Reader = (stdout, stderr) => {
   if (record === null || results === undefined) return textLines(stdout, stderr)
 
   return [
-    `suite ${labelOf(record.suite, 12, 'n/a')} · ${countOf(record.iterations) ?? 'n/a'} iterations · ${measureOf(record.totalTime)}`,
-    ...results.map(row => `${labelOf(row.operation, 24).padEnd(24)} mean ${measureOf(row.mean, '')} · p95 ${measureOf(row.p95, '')} · p99 ${measureOf(row.p99, '')} · ${typeof row.improvement === 'string' ? plain(row.improvement, 24) : measureOf(row.improvement, '')}`),
+    `suite ${labelOf(record.suite, 12, 'n/a')} · ${countOf(record.iterations) ?? 'n/a'} iterations · ${timeOf(record.totalTime)}`,
+    ...results.map(row => `${labelOf(row.operation, 24).padEnd(24)} mean ${timeOf(row.mean, '')} · p95 ${timeOf(row.p95, '')} · p99 ${timeOf(row.p99, '')} · ${typeof row.improvement === 'string' ? plain(row.improvement, 24) : measureOf(row.improvement, '')}`),
   ]
 }
 
