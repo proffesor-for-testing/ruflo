@@ -15,7 +15,15 @@ export function registerCost(on: On, state: ModState, options: ModOptions) {
   const limit = options.costBudgetUsd
   if (limit === undefined) return
   state.budget = { level: 'OK', limit }
-  let announced: BudgetLevel = 'OK' // the highest rung told; a fall and a second rise stay quiet
+  let announced: BudgetLevel = 'OK' // the highest rung told this session; a fall and a second rise stay quiet
+
+  // The budget is per session, and /clear starts a new one in the same process
+  // with its cost counted from zero: the ladder and the hard stop start over.
+  on('session.start', { surface: /^[\s\S]*$/ }, ($, e, next) => {
+    announced = 'OK'
+    state.budget = { level: 'OK', limit }
+    return next(e)
+  })
 
   on('session.measure', async ($, e, next) => {
     const result = await next(e)

@@ -27,6 +27,25 @@ describe('cost', () => {
     expect(JSON.parse((await $.command.run(run('consumer-snapshot'))).text ?? 'null').budget).toEqual({ level: 'HARD_STOP', usd: 2.4, limit: 2 })
   })
 
+  test('/clear starts a new session: the ladder is told again and the hard stop lifts', { options: { costBudgetUsd: 2, costHardStop: true } }, async ($, on) => {
+    world(on)
+    const toasts: string[] = []
+    on('ui.toast', ($, e) => (toasts.push(e.text), { value: undefined }))
+    on('session.measure', ($, e) => ({ changed: e.changed }))
+    on('agent.spawn', () => ({ model: 'sonnet' }))
+    const spawn = () =>
+      $.agent.spawn({ prompt: 'p', description: 'd', subagentType: 'coder' } as Parameters<typeof $.agent.spawn>[0])
+    await $.session.start(START)
+    await $.session.measure(measure(2.4))
+    expect((await spawn()).deny).toMatch(/costHardStop/)
+
+    // The engine counts the new session's cost from zero after /clear (measured live on 2.1.289).
+    await $.session.start({ ...START, source: 'clear' } as never)
+    expect(await spawn()).toEqual({ model: 'sonnet' })
+    await $.session.measure(measure(1.1))
+    expect(toasts.map(t => t.split(':')[0])).toEqual(['ruflo budget HARD_STOP', 'ruflo budget INFO'])
+  })
+
   test('a rung announced once stays quiet when cost falls and rises again', { options: { costBudgetUsd: 2 } }, async ($, on) => {
     world(on)
     const toasts: string[] = []

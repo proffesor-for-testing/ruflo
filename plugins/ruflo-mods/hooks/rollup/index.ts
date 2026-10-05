@@ -15,11 +15,13 @@ export type RollupState = {
   /** The highest cost rung the session reached. */
   rung: BudgetLevel
   written: boolean
+  /** The shared routed/tightened counters at this session's start: a record carries only this session's share. */
+  base: { routed: number; tightened: number }
   /** The ledger as last read or written, for the report. */
   recent: Rollup[]
 }
 
-export const rollupState = (): RollupState => ({ enabled: false, tools: 0, denied: 0, spawns: 0, rung: 'OK', written: false, recent: [] })
+export const rollupState = (): RollupState => ({ enabled: false, tools: 0, denied: 0, spawns: 0, rung: 'OK', written: false, base: { routed: 0, tightened: 0 }, recent: [] })
 
 /**
  * Session rollup (ADR-451 item 6): observability only. Off unless
@@ -34,6 +36,8 @@ export function registerRollup(on: On, state: ModState) {
   r.enabled = true
 
   on('session.start', { surface: /^[\s\S]*$/ }, async ($, e, next) => {
+    // /clear ends one session and starts the next in the same process: each gets its own record.
+    Object.assign(r, { tools: 0, denied: 0, spawns: 0, rung: 'OK', written: false, base: { routed: state.routed, tightened: state.tightened } })
     const result = await next(e)
     try {
       r.recent = readLedger(await $.store.get(LEDGER))
@@ -68,7 +72,7 @@ export function registerRollup(on: On, state: ModState) {
       r.written = true
       try {
         if (isRaised(r.rung, state.budget.level)) r.rung = state.budget.level
-        const record: Rollup = { at: await $.clock.now(), tools: r.tools, routed: state.routed, tightened: state.tightened, denied: r.denied, spawns: r.spawns, cost: r.rung }
+        const record: Rollup = { at: await $.clock.now(), tools: r.tools, routed: state.routed - r.base.routed, tightened: state.tightened - r.base.tightened, denied: r.denied, spawns: r.spawns, cost: r.rung }
         if (state.probe.enabled) {
           const names = [...state.probe.registered]
           record.probe = `${names.filter(n => (state.probe.fired.get(n) ?? 0) > 0).length}/${names.length}`
