@@ -5,6 +5,7 @@
  * `settlePending` in model-tools.ts, without importing the model tools themselves.
  */
 import { plain } from './data/parse'
+import { modelLine } from './model-line'
 import { settingsOf } from './settings'
 import type { ControlEntry, Pending, State } from './state'
 
@@ -149,5 +150,5 @@ export function levelRefusal(state: State, spec: Classed, asked?: ControlLevel):
   const level = levelFor(state, asked)
   const kind = classOf(spec)
 
-  return allows(level, kind) ? null : `Refused: "${plain(spec.label, 80)}" is a ${kind} action and control is set to "${level}" (it needs "${NEEDS[kind]}"). The person can raise it in Settings → Claude control. Nothing ran.`
+  return allows(level, kind) ? null : `Refused: "${modelLine(spec.label, 80)}" is a ${kind} action and control is set to "${level}" (it needs "${NEEDS[kind]}"). The person can raise it in Settings → Claude control. Nothing ran.`
 }

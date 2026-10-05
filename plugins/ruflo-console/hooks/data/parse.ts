@@ -17,10 +17,13 @@ const ID = /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$/
 
 // Whole escape sequences go first (the CLI colours its output; a hostile file may carry a hyperlink or a title): stripping only the ESC byte
 // would leave `[1m` or `]8;;https://…` in the text. Written as \u escapes so no invisible character sits in this source.
-const ESCAPES = new RegExp('\\u001b\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\)|\\u009d[^\\u0007\\u009c]*[\\u0007\\u009c]|(?:\\u001b\\[|\\u009b)[0-9;?]*[ -/]*[@-~]', 'g')
-// Controls, DEL, C1, soft hyphen, combining grapheme joiner, Arabic letter mark, zero-width and bidi characters, invisible operators,
-// variation selectors, Hangul fillers and BOM: nothing a person could read, all of them fit for hiding or reordering text.
-const HIDDEN = new RegExp('[\\u0000-\\u001f\\u007f-\\u009f\\u00ad\\u034f\\u061c\\u115f\\u1160\\u17b4\\u17b5\\u180b-\\u180f\\u200b-\\u200f\\u202a-\\u202e\\u2060-\\u2064\\u2066-\\u2069\\u3164\\ufe00-\\ufe0d\\ufeff\\uffa0]|[\\u{e0000}-\\u{e0fff}]', 'gu')
+// The OSC bodies stop at the next introducer, so a run of them without a terminator stays linear (each match cannot scan past the next).
+export const ESCAPES = new RegExp('\\u001b\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\)|\\u009d[^\\u0007\\u009c\\u009d]*[\\u0007\\u009c]|(?:\\u001b\\[|\\u009b)[0-9;?]*[ -/]*[@-~]', 'g')
+// Controls, DEL, C1, soft hyphen, combining grapheme joiner, Arabic letter mark, zero-width and bidi characters, word joiner, invisible
+// operators and the deprecated format characters, variation selectors, Hangul fillers, BOM, interlinear annotation marks and the tag
+// block: nothing a person could read, all of them fit for hiding or reordering text. The set screen.ts strips before it scans (less the
+// emoji presentation selectors, which a person sees), shared by plain() here and termText() for the terminal and the guidance lines.
+export const HIDDEN = new RegExp('[\\u0000-\\u001f\\u007f-\\u009f\\u00ad\\u034f\\u061c\\u115f\\u1160\\u17b4\\u17b5\\u180b-\\u180f\\u200b-\\u200f\\u202a-\\u202e\\u2060-\\u206f\\u3164\\ufe00-\\ufe0d\\ufeff\\uffa0\\ufff9-\\ufffb]|[\\u{e0000}-\\u{e0fff}]', 'gu')
 
 /** Plain printable text of at most `max` characters: no escape sequence, control, hidden or bidi-override character reaches the terminal. */
 export function plain(value: unknown, max = 200): string {
