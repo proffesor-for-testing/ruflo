@@ -89,7 +89,12 @@ export type SettingsState = {
   /** ruflo config values as `ruflo config get` last answered, by key. */
   core: Map<string, string>
   coreLoading: boolean
+  /** The AI preferences in force: the saved ones, lowered by this session's control cap. */
   ai: AiPrefs
+  /** The AI preferences as the person saved them; what is stored. */
+  aiSaved: AiPrefs
+  /** This session's RUFLO_CONSOLE_CONTROL cap (ADR-450 T12), or null: applied on every load and save, so nothing can lift it. */
+  aiCap: ControlCap | null
   /** The active search (applied with Enter, shown as a chip, cleared with ✕). */
   query: string
   /** Only settings that differ from their default. */
@@ -98,13 +103,34 @@ export type SettingsState = {
   last: { label: string; ok: boolean; detail: string } | null
 }
 
+/** A session cap on Claude's control: a level and a confirm mode (RUFLO_CONSOLE_CONTROL). */
+export type ControlCap = { level: 'off' | 'read' | 'write' | 'manage' | 'full'; confirm: 'ask' | 'auto' }
+
+const CONTROL_ORDER = ['off', 'read', 'write', 'manage', 'full'] as const
+
+/** The saved preferences under the cap: the lower level, and ask if either says ask (the same rule as model-tools' lowerOnly). */
+function capped(saved: AiPrefs, cap: ControlCap | null): AiPrefs {
+  if (cap === null) return { ...saved }
+  const level = CONTROL_ORDER.indexOf(cap.level) < CONTROL_ORDER.indexOf(saved.modelControl) ? cap.level : saved.modelControl
+
+  return { ...saved, modelControl: level, modelConfirm: cap.confirm === 'ask' || saved.modelConfirm === 'ask' ? 'ask' : 'auto' }
+}
+
+/** Sets this session's cap; it stays for the session, so a later load of the saved preferences cannot lift it (ADR-450 T12). */
+export function capAiPrefs(state: State, cap: ControlCap | null): void {
+  const settings = settingsOf(state)
+
+  settings.aiCap = cap
+  settings.ai = capped(settings.aiSaved, cap)
+}
+
 const states = new WeakMap<State, SettingsState>()
 
 export function settingsOf(state: State): SettingsState {
   let found = states.get(state)
 
   if (found === undefined) {
-    found = { level: 'simple', plugin: 'ruflo-console', configs: new Map(), loading: new Set(), core: new Map(), coreLoading: false, ai: { ...DEFAULT_AI }, query: '', onlyChanged: false, last: null }
+    found = { level: 'simple', plugin: 'ruflo-console', configs: new Map(), loading: new Set(), core: new Map(), coreLoading: false, ai: { ...DEFAULT_AI }, aiSaved: { ...DEFAULT_AI }, aiCap: null, query: '', onlyChanged: false, last: null }
     states.set(state, found)
   }
 
@@ -292,7 +318,9 @@ export async function loadAiPrefs(state: State, host: Host): Promise<void> {
 
   const flag = (key: keyof LoopPrefs, fallback: boolean) => (typeof stored?.[key] === 'boolean' ? (stored[key] as boolean) : fallback)
 
-  settingsOf(state).ai = {
+  const settings = settingsOf(state)
+
+  settings.aiSaved = {
     claudeModel: model ?? DEFAULT_AI.claudeModel,
     budgetUsd: budget ?? DEFAULT_AI.budgetUsd,
     autoAccept: stored?.autoAccept === true,
@@ -311,13 +339,16 @@ export async function loadAiPrefs(state: State, host: Host): Promise<void> {
     loopPublish: stored?.loopPublish === true,
     loopWriters: WRITER_CAPS.find(item => item === stored?.loopWriters) ?? DEFAULT_LOOP.loopWriters,
   }
+  settings.ai = capped(settings.aiSaved, settings.aiCap)
 }
 
 export function saveAiPrefs(state: State, host: Host, patch: Partial<AiPrefs>): void {
   const settings = settingsOf(state)
 
-  settings.ai = { ...settings.ai, ...patch }
-  void host.storeSet(AI_KEY, settings.ai).catch(() => undefined)
+  // The person's change goes to what they saved; the cap still applies to what is in force, and is never written to the store.
+  settings.aiSaved = { ...settings.aiSaved, ...patch }
+  settings.ai = capped(settings.aiSaved, settings.aiCap)
+  void host.storeSet(AI_KEY, settings.aiSaved).catch(() => undefined)
   host.invalidate()
 }
 
