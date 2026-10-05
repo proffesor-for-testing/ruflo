@@ -9,9 +9,11 @@
  * The person's text reaches an agent on stdin, never as an argument, so it cannot be read as a flag.
  */
 import type { ActionSpec } from './actions'
+import { ESCAPES, HIDDEN } from './data/parse'
 import type { Host } from './host'
 import { CLI_PREFIXES, PANE_ID, push, termStoreKeyOf, type AgentId, type HarnessId, type State, type TermLine } from './state'
 import { claudeParser, codexEvent, eventOf, type Sink } from './stream'
+import { maskInvites } from './xruv'
 
 export const TERM_MAX_LINES = 600
 /** The engine ends a spawned child only when its loop ends: the console ends a run at ten minutes. */
@@ -61,15 +63,13 @@ export function argvOf(state: State, agent: AgentId, text: string): readonly str
 }
 
 /**
- * One line of an agent's output as the scrollback keeps it: ANSI sequences, control and bidirectional characters
- * gone, tabs as two spaces, indentation kept. `trim` false keeps a trailing space (a token typed mid-sentence).
+ * One line of an agent's output as the scrollback keeps it: escape sequences, control, bidirectional and other invisible
+ * characters gone (the set plain() strips), tabs as two spaces, indentation kept, and any x.ruv.io invite code masked:
+ * it is a bearer secret, so neither the terminal page nor console_state ever carries one. `trim` false keeps a trailing
+ * space (a token typed mid-sentence).
  */
 export function termText(line: string, max = 400, trim = true): string {
-  const cleaned = line
-    .replace(/\u001b\][^\u0007\u001b]*(\u0007|\u001b\\)/g, '')
-    .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '')
-    .replace(/\t/g, '  ')
-    .replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, '')
+  const cleaned = maskInvites(line.replace(ESCAPES, '').replace(/\t/g, '  ').replace(HIDDEN, ''))
   const out = trim ? cleaned.trimEnd() : cleaned
 
   return out.length <= max ? out : `${out.slice(0, max - 1)}…`

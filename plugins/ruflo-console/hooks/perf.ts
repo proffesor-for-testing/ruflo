@@ -72,7 +72,7 @@ export const metricsReader: Reader = (stdout, stderr, state) => {
   return [
     `event-loop latency ${ms(avg)} · heap ${mb(memory.heapUsed)} of ${mb(memory.heapTotal)} · rss ${mb(memory.rss)}`,
     `system memory ${typeof memory.systemPercent === 'number' ? `${memory.systemPercent}%` : 'n/a'} · load ${load}`,
-    `embedding cache ~${String(cache.entries ?? 'n/a')} entries · HNSW ${String(cache.hnswEntries ?? 'n/a')} entries`,
+    `embedding cache ~${plain(String(cache.entries ?? 'n/a'), 40)} entries · HNSW ${plain(String(cache.hnswEntries ?? 'n/a'), 40)} entries`,
     'measured in the CLI process at the moment it ran: one sample per run',
   ]
 }
@@ -85,7 +85,7 @@ export const benchReader: Reader = (stdout, stderr) => {
   if (record === null || results === undefined) return textLines(stdout, stderr)
 
   return [
-    `suite ${plain(String(record.suite ?? 'n/a'), 12)} · ${String(record.iterations ?? 'n/a')} iterations · ${plain(String(record.totalTime ?? 'n/a'), 12)}`,
+    `suite ${plain(String(record.suite ?? 'n/a'), 12)} · ${plain(String(record.iterations ?? 'n/a'), 40)} iterations · ${plain(String(record.totalTime ?? 'n/a'), 12)}`,
     ...results.map(row => `${plain(String(row.operation ?? ''), 24).padEnd(24)} mean ${plain(String(row.mean ?? ''), 12)} · p95 ${plain(String(row.p95 ?? ''), 12)} · p99 ${plain(String(row.p99 ?? ''), 12)} · ${plain(String(row.improvement ?? ''), 24)}`),
   ]
 }
@@ -111,7 +111,7 @@ export const reportReader: Reader = (stdout, stderr, state) => {
   memo.atMs = Date.now()
 
   return [
-    `cpu ${typeof cpu.usage === 'number' ? `${cpu.usage.toFixed(1)}%` : 'n/a'} of ${String(cpu.cores ?? 'n/a')} cores · memory ${String(memory.used ?? 'n/a')} of ${String(memory.total ?? 'n/a')} MB · heap ${String(memory.heap ?? 'n/a')} MB`,
+    `cpu ${typeof cpu.usage === 'number' ? `${cpu.usage.toFixed(1)}%` : 'n/a'} of ${plain(String(cpu.cores ?? 'n/a'), 40)} cores · memory ${plain(String(memory.used ?? 'n/a'), 40)} of ${plain(String(memory.total ?? 'n/a'), 40)} MB · heap ${plain(String(memory.heap ?? 'n/a'), 40)} MB`,
     `latency avg ${ms(latency.avg)} · p50 ${ms(latency.p50)} · p95 ${ms(latency.p95)} · p99 ${ms(latency.p99)}`,
     `history: ${history.length} stored sample${history.length === 1 ? '' : 's'} in .claude-flow/performance/metrics.json`,
     ...labLines('performance_report', JSON.stringify({ trends: result.trends, recommendations: result.recommendations })).slice(0, 12),

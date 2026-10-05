@@ -136,7 +136,7 @@ export function startGuidance(state: State, host: Host, mc: McState): void {
     session: () => undefined,
     done: ({ costUsd, isError, message }) => {
       guidance.status = isError === true ? 'failed' : 'done'
-      guidance.note = isError === true ? `✗ ${message ?? 'failed'}` : `✓ ${Math.round((Date.now() - startedAtMs) / 1000)} s${costUsd !== undefined ? ` · $${costUsd.toFixed(3)}` : ''}`
+      guidance.note = isError === true ? termText(`✗ ${message ?? 'failed'}`, 200) : `✓ ${Math.round((Date.now() - startedAtMs) / 1000)} s${costUsd !== undefined ? ` · $${costUsd.toFixed(3)}` : ''}`
     },
   }
 
