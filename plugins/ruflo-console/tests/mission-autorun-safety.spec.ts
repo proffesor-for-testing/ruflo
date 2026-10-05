@@ -19,6 +19,7 @@ import { loadAiPrefs, settingsOf } from '../hooks/settings'
 import { newState, type State } from '../hooks/state'
 import type { Ctx } from '../hooks/views/common'
 import { missionCostRows } from '../hooks/views/mission-cost'
+import { missionControlView, missionStrip } from '../hooks/views/mission-control'
 
 const ID = 'msn_0123456789abcdef01234567'
 const out = (data: unknown) => `[INFO] Executing tool\nResult:\n${JSON.stringify(data)}\n`
@@ -75,6 +76,14 @@ async function cycle(w: ReturnType<typeof world>, turns: number): Promise<void> 
     await new Promise(resolve => setTimeout(resolve, 0))
     for (const fire of w.calls.timers.splice(0)) fire()
   }
+}
+
+/** Claude's own console_run call, through the real tool path, runner and palette entry; each batch of calls is a new turn. */
+async function claude(w: ReturnType<typeof world>, id: string, text = ''): Promise<string> {
+  if (w.state.control.turnCalls >= 30) w.state.control.turnCalls = 0
+  Object.assign(settingsOf(w.state).ai, { modelControl: 'full', modelConfirm: 'auto' })
+
+  return callTool('console_run', { id, text }, { state: w.state, control: { host: w.host, runner: w.runner } } as unknown as ModelToolDeps)
 }
 
 const reading = (usd: number, okAtMs: number, fromMs = 1_000) => ({ value: { usd, credits: null, unpriced: [], rows: 3, fromMs } satisfies MissionCost, okAtMs, error: null, errorAtMs: null, isRunning: false })
@@ -284,14 +293,6 @@ describe('a mission cap of "0" is no cap everywhere, and never silently replaces
 })
 
 describe('the hand-out count is kept apart from the capped event log', () => {
-  /** Claude's own console_run call, through the real tool path, runner and palette entry; each batch of calls is a new turn. */
-  async function claude(w: ReturnType<typeof world>, id: string, text = ''): Promise<string> {
-    if (w.state.control.turnCalls >= 30) w.state.control.turnCalls = 0
-    Object.assign(settingsOf(w.state).ai, { modelControl: 'full', modelConfirm: 'auto' })
-
-    return callTool('console_run', { id, text }, { state: w.state, control: { host: w.host, runner: w.runner } } as unknown as ModelToolDeps)
-  }
-
   it('Claude flooding the log with more than 500 auto-run toggles, then resuming, gets no fourth prompt', async () => {
     const w = world()
 
@@ -366,5 +367,106 @@ describe('the hand-out count is kept apart from the capped event log', () => {
     w.actions.auto(true)
     await cycle(w, 1)
     expect(w.calls.prompts).toHaveLength(7)
+  })
+})
+
+describe('who acted is decided where the action came in, not by the flag that stays up for all of a Claude call', () => {
+  type Drawn = { props?: { key?: string; onPress?: () => void; children?: unknown } }
+
+  /** Presses an element of the Missions page (or the menu's mission strip) as drawn, so the test runs the very closure a click runs. */
+  function press(w: ReturnType<typeof world>, key: string, page: 'missions' | 'strip' = 'missions'): void {
+    const kit = new Proxy({}, { get: (_target, type) => (props: Record<string, unknown>) => ({ type, props }) })
+    const ctx = { kit, state: w.state, nowMs: Date.now(), columns: 120, pictures: new Map(), act: { mission: w.actions, editField: () => undefined }, cards: true } as unknown as Ctx
+    const find = (node: unknown): Drawn | undefined => {
+      if (Array.isArray(node)) return node.map(find).find(found => found !== undefined)
+      if (node === null || typeof node !== 'object') return undefined
+
+      return (node as Drawn).props?.key === key ? (node as Drawn) : find((node as Drawn).props?.children)
+    }
+    const element = find(page === 'missions' ? missionControlView(ctx) : missionStrip(ctx))
+
+    expect(element?.props?.onPress, key).toBeTypeOf('function')
+    element?.props?.onPress?.()
+  }
+
+  /** Holds Claude's console_run of swarm-init on a CLI call that has not answered, so its call (and viaModel) stays open. */
+  function slowClaudeCall(w: ReturnType<typeof world>): { call: Promise<string>; release: () => void } {
+    let release: () => void = () => undefined
+    const run = w.host.run
+
+    w.host.run = ((...args: Parameters<typeof run>) => (args[0].includes('init') ? new Promise(resolve => (release = () => resolve({ exitCode: 0, stdout: '{}', stderr: '' } as Awaited<ReturnType<typeof run>>))) : run(...args))) as typeof run
+
+    return { call: claude(w, 'swarm-init'), release: () => release() }
+  }
+
+  it('the person pressing Resume while a Claude call is in flight is the person: no by:"model", and the count starts again', async () => {
+    const w = world()
+
+    await cycle(w, 4)
+    expect(w.mission.paused).toBe(true)
+    const slow = slowClaudeCall(w)
+
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(w.state.control.viaModel).toBe(true)
+    press(w, 'mc-resume')
+    expect(w.mission.events.at(-1)).toMatchObject({ type: 'mission.resumed' })
+    expect(w.mission.events.at(-1)).not.toHaveProperty('by')
+    expect(w.mission.handouts).toEqual({})
+    slow.release()
+    await slow.call
+    await cycle(w, 1)
+    expect(w.calls.prompts).toHaveLength(4)
+    expect(w.mission.paused).toBe(false)
+  })
+
+  it('the auto-run chip and the menu strip\'s resume, pressed during a Claude call, are the person\'s too', async () => {
+    const w = world()
+
+    await cycle(w, 4)
+    const slow = slowClaudeCall(w)
+
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(w.state.control.viaModel).toBe(true)
+    press(w, 'mc-auto')
+    press(w, 'mc-auto')
+    expect(w.mission.events.slice(-2)).toEqual([expect.objectContaining({ type: 'auto.off' }), expect.objectContaining({ type: 'auto.on' })])
+    expect(w.mission.events.slice(-2).some(event => event.by !== undefined)).toBe(false)
+    expect(w.mission.handouts).toEqual({})
+    press(w, 'menu-mc-pause', 'strip')
+    expect(w.mission.events.at(-1)).toMatchObject({ type: 'mission.resumed' })
+    expect(w.mission.events.at(-1)).not.toHaveProperty('by')
+    slow.release()
+    await slow.call
+  })
+
+  it('Claude\'s own resume and auto-on, with no entry point naming the person, stay Claude\'s and do not restart the count', async () => {
+    const w = world()
+
+    await cycle(w, 4)
+    expect(await claude(w, 'mission-auto', 'off')).not.toMatch(/^Refused/)
+    expect(await claude(w, 'mission-auto', 'on')).not.toMatch(/^Refused/)
+    expect(await claude(w, 'mission-resume')).not.toMatch(/^Refused/)
+    expect(w.mission.events.slice(-3).map(event => [event.type, event.by])).toEqual([['auto.off', 'model'], ['auto.on', 'model'], ['mission.resumed', 'model']])
+    expect(w.mission.handouts?.t1).toBe(3)
+    await cycle(w, 2)
+    expect(w.calls.prompts).toHaveLength(3)
+    expect(w.mission.events.at(-1)).toMatchObject({ type: 'auto.limit' })
+  })
+
+  it('the hand-out count is saved as soon as it is counted, before the task_update answers', async () => {
+    const w = world()
+    const saved: { handouts?: Record<string, number> }[] = []
+    let settle: (value: unknown) => void = () => undefined
+    const run = w.host.run
+
+    w.host.storeSet = (async (_key: string, value: { missions: MissionRecord[] }) => void saved.push(JSON.parse(JSON.stringify(value.missions.find(m => m.id === ID) ?? {})))) as never
+    w.host.run = ((...args: Parameters<typeof run>) => (args[0].includes('task_update') ? new Promise(resolve => (settle = resolve)) : run(...args))) as never
+    advance(w.state, w.host)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(types(w.mission)).toContain('task.dispatch_started')
+    expect(saved.at(-1)?.handouts).toEqual({ t1: 1 })
+    settle({ exitCode: 0, stdout: out({ success: true }), stderr: '' })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(w.calls.prompts).toHaveLength(1)
   })
 })

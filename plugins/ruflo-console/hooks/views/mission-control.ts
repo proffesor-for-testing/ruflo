@@ -194,9 +194,9 @@ function controlRows(ctx: Ctx, mission: MissionRecord): RenderElement[] {
       ctx,
       [
         ctx.kit.Button({ key: 'mc-next', label: ' ▶ Run next task ', variant: 'primary', onPress: () => m.next() }),
-        mission.paused ? button(ctx, 'mc-resume', '▶ Resume', () => m.resume()) : button(ctx, 'mc-pause', '⏸ Pause', () => m.pause()),
+        mission.paused ? button(ctx, 'mc-resume', '▶ Resume', () => m.resume('person')) : button(ctx, 'mc-pause', '⏸ Pause', () => m.pause('person')),
         button(ctx, 'mc-cancel', '✖ Cancel', () => m.cancel()),
-        chip(ctx, 'mc-auto', 'auto-run', mission.auto, () => m.auto(!mission.auto)),
+        chip(ctx, 'mc-auto', 'auto-run', mission.auto, () => m.auto(!mission.auto, 'person')),
       ],
       'mc-controls',
     ),
@@ -283,7 +283,7 @@ function stripCard(ctx: Ctx, mission: ReturnType<typeof activeMission>, field: R
         ctx,
         [
           ...(next === null ? [] : [ctx.kit.Button({ key: 'menu-mc-next', label: ' ▶ run next ', variant: 'primary' as const, onPress: () => m.next() })]),
-          ctx.kit.Button({ key: 'menu-mc-pause', label: mission.paused ? ' ▶ resume ' : ' ⏸ pause ', plain: true, onPress: () => (mission.paused ? m.resume() : m.pause()) }),
+          ctx.kit.Button({ key: 'menu-mc-pause', label: mission.paused ? ' ▶ resume ' : ' ⏸ pause ', plain: true, onPress: () => (mission.paused ? m.resume('person') : m.pause('person')) }),
           open,
         ],
         'menu-mission-ctl',
@@ -336,7 +336,7 @@ export function missionStrip(ctx: Ctx): RenderElement[] {
       [
         text(ctx, next === null ? ' nothing ready' : ` next ${next.id} [${next.stage ?? next.phase}] ${clip(next.title, Math.max(16, ctx.columns - 46))}`, { dimColor: next === null }),
         ...(next === null ? [] : [ctx.kit.Button({ key: 'menu-mc-next', label: ' ▶ run next ', variant: 'primary' as const, onPress: () => m.next() })]),
-        ctx.kit.Button({ key: 'menu-mc-pause', label: mission.paused ? ' ▶ resume ' : ' ⏸ pause ', plain: true, onPress: () => (mission.paused ? m.resume() : m.pause()) }),
+        ctx.kit.Button({ key: 'menu-mc-pause', label: mission.paused ? ' ▶ resume ' : ' ⏸ pause ', plain: true, onPress: () => (mission.paused ? m.resume('person') : m.pause('person')) }),
       ],
       'menu-mission-ctl',
     ),

@@ -5,7 +5,7 @@ import { stageOf, toMissionPlan, type Profile } from './goap'
 import type { Host } from './host'
 import { activeMission, instructionOf, mcOf, nextTask, record, rufloTaskOf, saveLedger } from './mission-control'
 import { countHandout, resetHandouts } from './mission-guard'
-import type { LedgerTask, MissionRecord } from './mission-types'
+import type { ActedBy, LedgerTask, MissionRecord } from './mission-types'
 import { CLI_PREFIXES, type State } from './state'
 
 const argvOf = (state: State, tool: string, params: unknown): string[] => [...CLI_PREFIXES[state.options.cli], 'mcp', 'exec', '-t', tool, '-p', JSON.stringify(params)]
@@ -163,6 +163,8 @@ export function dispatchSpec(state: State, host: Host, mission: MissionRecord, t
       inflight.add(task)
       record(mission, { type: 'task.dispatch_started', taskId: task.id, evidenceRef: task.rufloTaskId })
       countHandout(mission, task.id)
+      // Saved at once: a crash while the update runs must not lose the count.
+      saveLedger(state, host)
       const marked = await host.run(argvOf(state, 'task_update', { taskId: task.rufloTaskId, status: 'in_progress', progress: 5 }), 60_000).catch((error: unknown) => ({ exitCode: -1, stdout: '', stderr: error instanceof Error ? error.message : String(error) }))
       const answer = resultOf(marked.stdout)
 
@@ -201,8 +203,14 @@ export function dispatchSpec(state: State, host: Host, mission: MissionRecord, t
   }
 }
 
+/**
+ * Who acted when the entry point did not say: Claude while one of its console calls runs. That flag stays up for the whole call (up to
+ * 90 s while a confirm settles), so an entry point that is only ever the person's (a pane press) passes 'person' itself.
+ */
+export const actorOf = (state: State): ActedBy => (state.control.viaModel ? 'model' : 'person')
+
 /** Pause or resume dispatching, kept in the ledger (a session-bound mission has no durable executor to pause). */
-export function setPaused(state: State, host: Host, paused: boolean): void {
+export function setPaused(state: State, host: Host, paused: boolean, by: ActedBy = actorOf(state)): void {
   const mission = activeMission(state)
 
   // Already so: no event, so a repeated resume cannot restart auto-run's hand-out count.
@@ -210,8 +218,8 @@ export function setPaused(state: State, host: Host, paused: boolean): void {
 
   mission.paused = paused
   // The person resuming is their go-ahead: auto-run's hand-out count starts again. Claude resuming is not.
-  if (!paused && !state.control.viaModel) resetHandouts(mission)
-  record(mission, { type: paused ? 'mission.paused' : 'mission.resumed', status: paused ? 'paused' : 'running', ...(state.control.viaModel && { by: 'model' as const }) })
+  if (!paused && by === 'person') resetHandouts(mission)
+  record(mission, { type: paused ? 'mission.paused' : 'mission.resumed', status: paused ? 'paused' : 'running', ...(by === 'model' && { by: 'model' as const }) })
   mcOf(state).last = { label: paused ? 'paused: no more tasks are handed out' : 'resumed', ok: true, detail: paused ? 'a task already handed to Claude finishes first' : 'Run next hands out the next ready task' }
   saveLedger(state, host)
   host.invalidate()

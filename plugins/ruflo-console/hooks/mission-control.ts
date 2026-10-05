@@ -19,7 +19,7 @@ import type { Runner } from './runner'
 import { CLI_PREFIXES, type State } from './state'
 import type { Derived, LedgerEvent, LedgerTask, McState, McTab, MissionActions, MissionRecord } from './mission-types'
 
-import { cancelSpec, createSpec, dispatchSpec, isInflight, resultOf, setPaused } from './mission-specs'
+import { actorOf, cancelSpec, createSpec, dispatchSpec, isInflight, resultOf, setPaused } from './mission-specs'
 
 export { cancelSpec, createSpec, dispatchSpec, resultOf, setPaused }
 export type { Derived, LedgerEvent, LedgerTask, McState, McTab, MissionActions, MissionRecord } from './mission-types'
@@ -305,22 +305,22 @@ export function missionActions(state: State, host: Host, runner: Runner): Missio
 
       runner.ask(dispatchSpec(state, host, mission, task, text => host.submitPrompt(text)), 'nothing to hand out')
     },
-    pause: () => setPaused(state, host, true),
-    resume: () => setPaused(state, host, false),
+    pause: by => setPaused(state, host, true, by),
+    resume: by => setPaused(state, host, false, by),
     cancel: () => {
       const mission = activeMission(state)
 
       runner.ask(mission === null ? null : cancelSpec(state, host, mission, tasksNow()), 'no active mission to cancel')
     },
-    auto: on => {
+    auto: (on, by = actorOf(state)) => {
       const mission = activeMission(state)
 
       if (mission === null || mission.auto === on) return
 
       mission.auto = on
       // The person turning auto-run on is their go-ahead: the hand-out count starts again. Claude turning it on is not.
-      if (on && !state.control.viaModel) resetHandouts(mission)
-      record(mission, { type: on ? 'auto.on' : 'auto.off', ...(state.control.viaModel && { by: 'model' as const }) })
+      if (on && by === 'person') resetHandouts(mission)
+      record(mission, { type: on ? 'auto.on' : 'auto.off', ...(by === 'model' && { by: 'model' as const }) })
       saveLedger(state, host)
       host.invalidate()
     },
