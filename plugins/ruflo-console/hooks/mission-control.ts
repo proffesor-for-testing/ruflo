@@ -310,10 +310,10 @@ export function missionActions(state: State, host: Host, runner: Runner): Missio
     auto: on => {
       const mission = activeMission(state)
 
-      if (mission === null) return
+      if (mission === null || mission.auto === on) return
 
       mission.auto = on
-      record(mission, { type: on ? 'auto.on' : 'auto.off' })
+      record(mission, { type: on ? 'auto.on' : 'auto.off', ...(state.control.viaModel && { by: 'model' as const }) })
       saveLedger(state, host)
       host.invalidate()
     },
@@ -422,7 +422,8 @@ export const AUTO_DISPATCH_LIMIT = 3
 
 /** Hand-outs of one task, sent or failed, since the person last turned auto-run on or resumed the mission. */
 function attemptsOf(mission: MissionRecord, taskId: string): number {
-  const since = mission.events.findLastIndex(event => event.type === 'auto.on' || event.type === 'mission.resumed')
+  // Only the person's own go-ahead starts the count again: Claude turning auto-run on or resuming does not (it receives the turns).
+  const since = mission.events.findLastIndex(event => (event.type === 'auto.on' || event.type === 'mission.resumed') && event.by !== 'model')
 
-  return mission.events.slice(since + 1).filter(event => event.taskId === taskId && (event.type === 'task.dispatched' || event.type === 'task.dispatch_failed')).length
+  return mission.events.slice(since + 1).filter(event => event.taskId === taskId && event.type === 'task.dispatch_started').length
 }

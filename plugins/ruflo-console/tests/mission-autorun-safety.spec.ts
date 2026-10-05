@@ -12,7 +12,7 @@ import { capText, type MissionCost } from '../hooks/data/mission-cost'
 import type { TaskRecord } from '../hooks/data/parse'
 import type { Host } from '../hooks/host'
 import { advance, dispatchSpec, mcOf, missionActions, type MissionRecord } from '../hooks/mission-control'
-import { capOf, isCapReached } from '../hooks/mission-guard'
+import { capOf, capVerdict, isCapReached } from '../hooks/mission-guard'
 import { createRunner } from '../hooks/runner'
 import { loadAiPrefs, settingsOf } from '../hooks/settings'
 import { newState, type State } from '../hooks/state'
@@ -126,6 +126,47 @@ describe('auto-run hands out one task a bounded number of times', () => {
   })
 })
 
+describe('only the person restarts the hand-out count, and a slow store cannot get past it', () => {
+  it('Claude resuming the mission does not restart the count: no fourth prompt, the mission pauses again', async () => {
+    const w = world()
+
+    await cycle(w, 4)
+    expect(w.mission.paused).toBe(true)
+    w.state.control.viaModel = true
+    w.actions.resume()
+    w.state.control.viaModel = false
+    await cycle(w, 3)
+    expect(w.calls.prompts).toHaveLength(3)
+    expect(w.mission.paused).toBe(true)
+  })
+
+  it('a resume or auto-on that changes nothing records nothing, so it cannot restart the count', async () => {
+    const w = world()
+
+    await cycle(w, 2)
+    const before = w.mission.events.length
+    w.actions.resume()
+    w.actions.auto(true)
+    expect(w.mission.events).toHaveLength(before)
+    await cycle(w, 4)
+    expect(w.calls.prompts).toHaveLength(3)
+  })
+
+  it('a task_update slower than the 15 s guard holds the task in flight: one attempt, not one per refresh', async () => {
+    const w = world()
+    let settle: (value: unknown) => void = () => undefined
+    const run = w.host.run
+
+    w.host.run = (argv: readonly string[]) => (argv.includes('task_update') ? new Promise(resolve => (settle = resolve)) : run(argv)) as never
+    await cycle(w, 5)
+    expect(w.calls.prompts).toHaveLength(0)
+    expect(types(w.mission).filter(type => type === 'task.dispatch_started')).toHaveLength(1)
+    settle({ exitCode: 0, stdout: out({ success: true }), stderr: '' })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(w.calls.prompts).toHaveLength(1)
+  })
+})
+
 describe('the spend guard never reads a frozen number', () => {
   it('with a cap, an hour-old reading below it holds auto-run (no prompt) and says why once', async () => {
     const w = world()
@@ -154,6 +195,14 @@ describe('the spend guard never reads a frozen number', () => {
 
     await cycle(uncapped, 1)
     expect(uncapped.calls.prompts).toHaveLength(1)
+  })
+
+  it('a reading dated in the future is not fresh (a stepped-back clock): it holds like an unknown one', () => {
+    const w = world()
+
+    settingsOf(w.state).ai.missionCapUsd = '1'
+    w.state.probes.set('mission-cost', reading(0.2, Date.now() + 86_400_000) as never)
+    expect(capVerdict(w.state, w.mission)).toBe('unknown')
   })
 
   it('an old reading already at the cap still pauses: spend inside a window only grows', () => {

@@ -5,7 +5,7 @@ import type { Plan, Profile, Rigor } from './goap'
 import type { LoopActions } from './views/mission-loop'
 
 export type LedgerTask = { id: string; title: string; phase: string; stage?: string; agent: string; requirement: string; dependsOn: string[]; rufloTaskId?: string; dispatchedAtMs?: number }
-export type LedgerEvent = { seq: number; atMs: number; type: string; taskId?: string; status?: string; evidenceRef?: string; note?: string }
+export type LedgerEvent = { seq: number; atMs: number; type: string; taskId?: string; status?: string; evidenceRef?: string; note?: string; by?: 'model' }
 export type MissionRecord = {
   id: string
   objective: string

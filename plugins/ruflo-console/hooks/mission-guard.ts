@@ -35,7 +35,7 @@ export function capVerdict(state: State, mission: MissionRecord, nowMs = Date.no
 
   // Spend inside a window only grows: a reading at the cap stays true however old it is.
   if (shouldPause(capState(cost.usd, cap), true)) return 'reached'
-  if (cost.usd === null || result?.okAtMs === null || result?.okAtMs === undefined || nowMs - result.okAtMs > MISSION_COST_STALE_MS) return 'unknown'
+  if (cost.usd === null || result?.okAtMs === null || result?.okAtMs === undefined || nowMs - result.okAtMs > MISSION_COST_STALE_MS || nowMs < result.okAtMs) return 'unknown'
 
   return 'below'
 }
