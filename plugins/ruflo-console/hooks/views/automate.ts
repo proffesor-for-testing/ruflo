@@ -267,7 +267,7 @@ function configRows(ctx: Ctx): RenderElement[] {
   rows.push(strip(ctx, 'cfg-strip', [{ id: 'auto-cfg-list', label: 'list', cost: 'read' }]))
 
   for (const entry of (config ?? []).slice(0, 16)) {
-    rows.push(row(ctx, [ctx.kit.Text({ color: THEME.ok, children: ` ${entry.key.padEnd(28)} ` }), ctx.kit.Text({ color: entry.isSecret ? THEME.warn : THEME.info, wrap: 'truncate-end', children: clip(`${entry.shown}  (${entry.source})`, Math.max(4, ctx.columns - 32)) })], `cfg-${entry.key}`))
+    rows.push(row(ctx, [ctx.kit.Text({ color: THEME.ok, children: ` ${entry.key.padEnd(28)} ` }), ctx.kit.Text({ color: entry.isSecret ? THEME.warn : THEME.info, wrap: 'truncate-end', children: clip(`= ${entry.shown}  (${entry.source})`, Math.max(4, ctx.columns - 32)) })], `cfg-${entry.key}`))
   }
 
   rows.push(field(ctx, 'auto-cfg-get', 'get', 'a key: swarm.topology', 'get'))

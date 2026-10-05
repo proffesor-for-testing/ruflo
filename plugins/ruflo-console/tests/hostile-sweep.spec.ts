@@ -13,19 +13,23 @@ import { memoryProbe, namespacesProbe, PROBES, registryProbe, scoreProbe } from 
 import { parseLedger as parseCostLedger } from '../hooks/data/cost-ledger'
 import { parseGeneration, parseManifest, parseReceipt, parseServed } from '../hooks/data/evolve'
 import { parseMissionCost } from '../hooks/data/mission-cost'
+import { parseTasks } from '../hooks/data/parse'
 import { parseResearch } from '../hooks/data/research'
 import { messageOf } from '../hooks/data/xruv'
+import { evolveLines } from '../hooks/evolve'
 import { memLines } from '../hooks/memory-lines'
 import { labLines } from '../hooks/mh-lab'
 import { mcOf } from '../hooks/mission-control'
 import type { McTab } from '../hooks/mission-types'
 import { benchReader, metricsReader, reportReader } from '../hooks/perf'
 import { roomOf } from '../hooks/room'
+import { scanReader, SECURE_TEXT } from '../hooks/secure'
 import { newState, VIEWS, type State } from '../hooks/state'
 import { claudeParser, codexEvent, type Sink } from '../hooks/stream'
+import { barText } from '../hooks/views/bar'
 import { setLook } from '../hooks/views/common'
 import { viewText } from '../hooks/views/pane'
-import { act, AGENTDB_MOD_STATUS, AllFlipped, hostileStdout, PROBE_OUT, snapshotWith, SWEEP } from './fixtures/hostile'
+import { act, AGENTDB_MOD_STATUS, AllFlipped, hostileStdout, isHostile, PROBE_OUT, snapshotWith, SWEEP } from './fixtures/hostile'
 import { CLI_OUT } from './fixtures/ruflo-run'
 
 const TABS: readonly McTab[] = ['plan', 'tasks', 'agents', 'evidence', 'record', 'loop']
@@ -249,5 +253,47 @@ describe('lab readers a person runs', () => {
 
     expect(lines.filter(line => SWEEP.test(line))).toEqual([])
     expect(lines[1]).toContain('p99 0.25')
+  })
+})
+
+describe('round 4: the readers the round-4 review found drawing raw', () => {
+  it('a hostile `security scan` summary: the counts are bounded in the result, the status band and the Security meter', () => {
+    setLook('plain')
+    const state = newState({})
+    const lines = scanReader(JSON.stringify({ type: 'code', depth: 'quick', summary: { critical: 1e308, high: 1e308, medium: -1, low: 12.3456789, total: 1e308 }, findings: [] }), '', state)
+
+    state.view = 'secure'
+    const drawn = [...lines, barText(state, 5_000), ...viewText({ state, nowMs: 5_000, columns: 200, act }, 'secure').split('\n')]
+
+    expect(drawn.filter(line => SWEEP.test(line))).toEqual([])
+    expect(barText(state, 5_000)).toContain(`🔒 ${2 * Number.MAX_SAFE_INTEGER} high or critical`)
+  })
+
+  it('a threat confidence outside 0..1 from `security defend` is held to 0..100%', () => {
+    const read = SECURE_TEXT.find(entry => entry.id === 'aid-check')?.read
+    const lines = read?.(JSON.stringify({ safe: false, threats: [{ severity: 'high', type: 'injection', confidence: 1e308, description: 'x' }, { severity: 'low', type: 'pii', confidence: -1, description: 'y' }] }), '', newState({})) ?? []
+
+    expect(lines.slice(1)).toEqual(['[high] injection 100% · x', '[low] pii 0% · y'])
+  })
+
+  it('Self-Evolution: the serving epoch of the ledger and of each promotion is a bounded count', () => {
+    const ledger = evolveLines(newState({}), 'evolve-ledger', `Result:\n${JSON.stringify({ state: { servingEpoch: 1e308, activeChampionRef: null, receiptStates: {} }, ledger: { valid: true, errors: [], commits: 1, head: 'sha256:00' } })}`, '', 1)
+    const history = evolveLines(newState({}), 'evolve-history', JSON.stringify({ commits: [{ servingEpoch: -1, baselineRef: 'b', candidateId: 'c', receiptId: 'r', proposer: 'local' }] }), '', 1)
+
+    expect([...ledger, ...history].filter(line => SWEEP.test(line))).toEqual([])
+    expect(history[0]).toMatch(/^epoch \? · /)
+  })
+
+  it('MetaHarness genome: the meta fields are text, so a number there reads n/a', () => {
+    const lines = labLines('mh-genome', JSON.stringify({ valid: true, errors: [], genome: { meta: { id: 'g1', parent: -1, mutated: 1e308 }, components: { a: 1 } } }))
+
+    expect(lines[1]).toBe('genome g1 (parent n/a, mutated n/a)')
+  })
+
+  it('a completed task’s result object: its numbers are bounded, a signed one keeps its key', () => {
+    const task = parseTasks(JSON.stringify({ tasks: { 't-1': { taskId: 't-1', status: 'completed', result: { tests: 1e308, coverage: 12.3456789, delta: -1 } } } }))[0]
+
+    expect(task?.resultText).toBe('tests: n/a · coverage: 12.346 · delta: -1')
+    expect(isHostile(task?.resultText ?? '')).toBe(false)
   })
 })

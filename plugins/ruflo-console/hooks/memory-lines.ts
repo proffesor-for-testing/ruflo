@@ -4,9 +4,9 @@
  * reads JSON. The CLI's own warnings that change the meaning of an answer (a second store it did not read, a key not
  * found) are kept, first. And the recency binning the view draws as a timeline. Pure: strings in, strings out.
  */
-import { countOf, finiteIn, isoOf, shownOf } from './data/bounds'
+import { boundedJson, countOf, finiteIn, isoOf, measureOf } from './data/bounds'
 import { jsonAfter } from './data/cli'
-import { msOf, plain, recordOf } from './data/parse'
+import { labelOf, msOf, plain, recordOf } from './data/parse'
 import { labLines } from './mh-lab'
 
 /** An entry's value may be long: the panel scrolls (j/k), so it keeps more lines than the MetaHarness lab. */
@@ -57,14 +57,15 @@ export function wrap(text: string, width = WRAP): string[] {
   return out
 }
 
-/** A field as text: a string capped, a boolean as written, a number bounded by shownOf (never an exponent or a long fraction). */
-const short = (value: unknown, max: number): string => (typeof value === 'string' ? plain(value, max) : typeof value === 'number' || typeof value === 'boolean' ? shownOf(value) : '')
-const score = (value: unknown): string => finiteIn(value, -1, 1e6)?.toFixed(3) ?? '  n/a'
+/** A name or a text field (namespace, key, model, note): labelOf's, so a number there is a whole id or nothing. */
+const short = (value: unknown, max: number): string => labelOf(value, max)
+/** A hit's score: a similarity or confidence is not negative here (a hit below zero is no match), and past a million it is hostile. */
+const score = (value: unknown): string => finiteIn(value, 0, 1e6)?.toFixed(3) ?? '  n/a'
 
 /** One stored entry: its name, its size and access count, then the whole value. */
 function entryLines(record: Record<string, unknown>): string[] {
   const value = record.content ?? record.value
-  const body = typeof value === 'string' ? value : JSON.stringify(value ?? null, null, 2)
+  const body = typeof value === 'string' ? value : (boundedJson(value ?? null, 2) ?? 'null')
   const updated = isoOf(msOf(record.updatedAt ?? record.storedAt))
   const head = `${short(record.namespace, 40)}/${short(record.key, 128)} · ${body.length} chars · read ${countOf(record.accessCount) ?? 'n/a'}× · ${record.hasEmbedding === true ? 'has a vector' : 'no vector'}${updated !== undefined ? ` · updated ${updated.slice(0, 16).replace('T', ' ')}` : ''}`
 
@@ -74,7 +75,7 @@ function entryLines(record: Record<string, unknown>): string[] {
 /** Search hits, best first: score, where it lives, and the start of its text. */
 function hitLines(record: Record<string, unknown>, hits: unknown[]): string[] {
   const rows = hits.map(recordOf).filter((row): row is Record<string, unknown> => row !== null)
-  const head = `${rows.length} hit${rows.length === 1 ? '' : 's'}${record.searchType !== undefined ? ` · ${short(record.searchType, 20)}` : ''}${record.searchTime !== undefined ? ` · ${short(record.searchTime, 20)}` : ''}${Array.isArray(record.searchedNamespaces) ? ` · searched ${record.searchedNamespaces.map(name => short(name, 24)).join(', ')}` : ''}`
+  const head = `${rows.length} hit${rows.length === 1 ? '' : 's'}${record.searchType !== undefined ? ` · ${short(record.searchType, 20)}` : ''}${record.searchTime !== undefined ? ` · ${typeof record.searchTime === 'string' ? plain(record.searchTime, 20) : measureOf(record.searchTime)}` : ''}${Array.isArray(record.searchedNamespaces) ? ` · searched ${record.searchedNamespaces.map(name => short(name, 24)).join(', ')}` : ''}`
   const notes = [record.degraded === true ? `degraded: ${short(record.reason, 80)}` : '', short(record.note, 160)].filter(note => note !== '')
 
   if (rows.length === 0) return [head, ...notes, '(no matches)']
@@ -112,7 +113,7 @@ function controllerLines(record: Record<string, unknown>, controllers: unknown[]
   const rows = controllers.map(recordOf).filter((row): row is Record<string, unknown> => row !== null)
   const on = rows.filter(row => row.enabled === true).length
 
-  return [`AgentDB ${record.available === true ? 'available' : 'NOT available'} · ${on}/${rows.length} controllers on`, ...rows.map(row => `${row.enabled === true ? '✓' : '·'} ${short(row.name, 40)}${row.level !== undefined ? `  L${short(row.level, 4)}` : ''}`)]
+  return [`AgentDB ${record.available === true ? 'available' : 'NOT available'} · ${on}/${rows.length} controllers on`, ...rows.map(row => `${row.enabled === true ? '✓' : '·'} ${short(row.name, 40)}${row.level !== undefined ? `  L${countOf(row.level) ?? '?'}` : ''}`)]
 }
 
 /** A vector: its dimensions, norm and first values, never all 384. */

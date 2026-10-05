@@ -129,6 +129,21 @@ export function hostileStdout(text: string, n: number): string | null {
  */
 export const SWEEP = /\bNaN\b|Infinity|\bundefined\b|\de[+-]\d|(^|[\s/$(:[])-\d|-\d+%|\d\.\d{5,}/
 
+/**
+ * A field a reader prints with its own key, as the tool wrote it (`delta: -1`, `alpha: -1, -2`, `key = -1`), or alone on its line, keeps its sign: shownOf bounds it
+ * (finite, within ±1e15, three places) but a negative there is the tool's value, not a count. Only that is let through: a minus after
+ * a word and a space (`-1 entries`, `parent -1`, `[mem -1.00]`), after `$`, or before an exponent or a long fraction still matches.
+ */
+const KEYED_NEGATIVE = /([:=,] )-(\d+(?:\.\d{1,3})?)(?=$|[\s,·)\]])/g
+/** The same inside compact JSON a reader shows whole (`{"delta":-1}`, `[-1,-2]`). */
+const JSON_NEGATIVE = /([[,:])-(\d+(?:\.\d{1,3})?)(?=[,\]}])/g
+
+/** Does a drawn line hold a hostile number? The sweep pattern, with a keyed field's sign let through. */
+export const isHostile = (line: string): boolean => !LONE_VALUE.test(line) && SWEEP.test(line.replace(KEYED_NEGATIVE, '$1$2').replace(JSON_NEGATIVE, '$1$2'))
+
+/** A line that is one value and nothing else (an element of a JSON list, a list of plain values): its sign is the value's own. */
+const LONE_VALUE = /^\s*(- )?-\d+(\.\d{1,3})?,?\s*$/
+
 /** A section set that answers yes for every key: every collapsible section drawn flipped from its default (closed ones open). */
 export class AllFlipped extends Set<string> {
   override has(): boolean {

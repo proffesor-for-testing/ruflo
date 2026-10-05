@@ -11,7 +11,7 @@
  */
 import type { ActionSpec } from './actions'
 import { configKeyOf, freeText, keyValueOf, isSecretKey, laneOf, looksSecret, MASK, objectIn, parseAutopilot, parseConfig, parseSessions, parseTemplates, parseWorkflows, relPathOf, shownValue, WORKER_ABOUT, WORKER_NAMES } from './data/automate'
-import { idOf, plain, type AgentRecord, type TaskRecord } from './data/parse'
+import { type AgentRecord, idOf, labelOf, plain, type TaskRecord } from './data/parse'
 import { labLines, type LabCost } from './mh-lab'
 import type { State } from './state'
 import { selection } from './views/select'
@@ -165,7 +165,7 @@ function configRead(stdout: string, stderr: string): string[] {
   const now = shownValue(key, value.value)
   const before = 'previousValue' in value ? ` (was ${shownValue(key, value.previousValue).shown})` : ''
 
-  return [`${key} = ${now.shown}${before}`, `source ${plain(String(value.source ?? value.scope ?? 'n/a'), 20)}${value.path !== undefined ? ` · ${plain(String(value.path), 120)}` : ''}`]
+  return [`${key} = ${now.shown}${before}`, `source ${labelOf(value.source ?? value.scope, 20, 'n/a')}${value.path !== undefined ? ` · ${labelOf(value.path, 120)}` : ''}`]
 }
 
 export function configGet(text: string): ActionSpec | null {
@@ -303,7 +303,7 @@ export function sessionSpec(verb: 'restore' | 'export' | 'delete', sessionId: st
         read: (stdout, stderr) => {
           const value = objectIn(stdout)
 
-          return value === null ? labLines(lab, '', stderr) : [`${plain(String(value.sessionId ?? id), 80)} → ${plain(String(value.path ?? value.error ?? 'n/a'), 160)}`, `exported ${plain(String(value.exportedAt ?? 'n/a'), 40)}`]
+          return value === null ? labLines(lab, '', stderr) : [`${labelOf(value.sessionId ?? id, 80)} → ${labelOf(value.path ?? value.error, 160, 'n/a')}`, `exported ${labelOf(value.exportedAt, 40, 'n/a')}`]
         },
       })
     case 'delete':

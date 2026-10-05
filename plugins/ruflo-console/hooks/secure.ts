@@ -7,9 +7,9 @@
  * checks, the text in the field) is kept per State in this module. Pure: entries, validators and parsers, no `$`.
  */
 import { exec, type ActionSpec } from './actions'
-import { finiteIn } from './data/bounds'
+import { countOf, finiteIn, ratioOf } from './data/bounds'
 import { jsonAfter } from './data/cli'
-import { plain, recordOf } from './data/parse'
+import { labelOf, plain, recordOf } from './data/parse'
 import { labLines } from './mh-lab'
 import type { State } from './state'
 
@@ -97,18 +97,25 @@ export const scanReader: Reader = (stdout, stderr, state) => {
 
   const counts = zero()
 
-  for (const level of SEVERITIES) counts[level] = typeof summary[level] === 'number' ? summary[level] : 0
-  secMemo(state).findings = { source: `scan ${plain(String(record.type ?? ''), 8)} ${plain(String(record.depth ?? ''), 10)}`.trim(), counts, atMs: Date.now() }
+  for (const level of SEVERITIES) counts[level] = countOf(summary[level]) ?? 0
+  secMemo(state).findings = { source: `scan ${labelOf(record.type, 8)} ${labelOf(record.depth, 10)}`.trim(), counts, atMs: Date.now() }
 
   const findings = (Array.isArray(record.findings) ? record.findings : []).map(recordOf).filter(row => row !== null)
-  const total = typeof summary.total === 'number' ? summary.total : findings.length
+  const total = countOf(summary.total) ?? findings.length
 
   return [
-    `${counts.critical + counts.high > 0 ? 'ATTENTION' : total === 0 ? 'CLEAN' : 'REVIEW'} · ${total} finding${total === 1 ? '' : 's'} · depth ${plain(String(record.depth ?? 'n/a'), 10)} · type ${plain(String(record.type ?? 'n/a'), 8)}`,
+    `${counts.critical + counts.high > 0 ? 'ATTENTION' : total === 0 ? 'CLEAN' : 'REVIEW'} · ${total} finding${total === 1 ? '' : 's'} · depth ${labelOf(record.depth, 10, 'n/a')} · type ${labelOf(record.type, 8, 'n/a')}`,
     `by severity: ${SEVERITIES.map(level => `${level} ${counts[level]}`).join(' · ')}`,
-    ...findings.slice(0, 30).map(row => `[${levelOf(row.severity) ?? 'low'}] ${plain(String(row.type ?? ''), 40)} · ${plain(String(row.location ?? ''), 60)} · ${plain(String(row.description ?? ''), 80)}`),
+    ...findings.slice(0, 30).map(row => `[${levelOf(row.severity) ?? 'low'}] ${labelOf(row.type, 40)} · ${labelOf(row.location, 60)} · ${labelOf(row.description, 80)}`),
     ...(findings.length > 30 ? [`… ${findings.length - 30} more`] : []),
   ]
+}
+
+/** A threat's confidence as ` 87%`: a share held to 0..1 (a hostile 1e308 or -1 is not drawn as Infinity% or -100%), else nothing. */
+const percentOf = (value: unknown): string => {
+  const share = ratioOf(value)
+
+  return share === undefined ? '' : ` ${Math.round(share * 100)}%`
 }
 
 /** One verdict object (defend, aidefence_scan, channel-scan, scan-plan): the verdict first, so an exit 1 reads right. */
@@ -134,7 +141,7 @@ function verdictLines(record: Record<string, unknown>, source: string, state: St
 
   return [
     head.join(' · '),
-    ...(threats ?? []).slice(0, 20).map(row => `[${levelOf(row.severity) ?? 'low'}] ${plain(String(row.type ?? row.kind ?? ''), 32)}${typeof row.confidence === 'number' ? ` ${Math.round(row.confidence * 100)}%` : ''} · ${plain(String(row.description ?? row.reason ?? ''), 110)}`),
+    ...(threats ?? []).slice(0, 20).map(row => `[${levelOf(row.severity) ?? 'low'}] ${labelOf(row.type ?? row.kind, 32)}${percentOf(row.confidence)} · ${labelOf(row.description ?? row.reason, 110)}`),
   ]
 }
 
@@ -161,7 +168,7 @@ export const mcpReader =
     const content = Array.isArray(result.content) ? recordOf(result.content[0]) : null
     const inner = typeof content?.text === 'string' ? recordOf(jsonAfter(content.text)) : result
 
-    if (inner === null) return [`${source}: ${plain(String(content?.text ?? ''), 160)}`]
+    if (inner === null) return [`${source}: ${labelOf(content?.text, 160)}`]
     if (typeof inner.error === 'string') return [`error: ${plain(inner.error, 200)}`]
 
     return verdictLines(inner, source, state) ?? labLines(source, JSON.stringify(inner))
@@ -174,7 +181,7 @@ export const compositionReader: Reader = (stdout, stderr) => {
 
   if (suspects === undefined) return textLines(stdout, stderr)
 
-  return [`${suspects.length} suspect${suspects.length === 1 ? '' : 's'} in the CLI's registered MCP tool descriptions`, ...suspects.slice(0, 25).map(row => `${plain(String(row.tool ?? ''), 32)} · ${finiteIn(row.score, 0, 1_000)?.toFixed(2) ?? 'n/a'} · ${plain(String(row.reason ?? ''), 100)}`)]
+  return [`${suspects.length} suspect${suspects.length === 1 ? '' : 's'} in the CLI's registered MCP tool descriptions`, ...suspects.slice(0, 25).map(row => `${labelOf(row.tool, 32)} · ${finiteIn(row.score, 0, 1_000)?.toFixed(2) ?? 'n/a'} · ${labelOf(row.reason, 100)}`)]
 }
 
 /** Doctor's `✓|⚠|✗ Name: message` rows (colours stripped), its summary, and anything after them (suggested fixes). */

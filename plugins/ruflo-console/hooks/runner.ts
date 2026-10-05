@@ -15,6 +15,9 @@ import { CLI_PREFIXES, type State } from './state'
 
 export const PENDING_TTL_MS = 30_000
 
+/** What a lab run's result panel shows of its output: the entry's own reader, else its line reader, else the lab's generic reading. */
+export const resultLines = (spec: ActionSpec, stdout: string, stderr: string, ok: boolean): string[] => spec.read?.(stdout, stderr, ok) ?? (spec.lines ?? ((out, err) => labLines(spec.lab ?? '', out, err)))(stdout, stderr)
+
 export type RunnerDeps = {
   /** A read of the disk that starts after this call. */
   freshRead: () => Promise<void>
@@ -75,7 +78,7 @@ export function createRunner(state: State, host: Host, deps: RunnerDeps): Runner
 
       // A lab run's output goes to the lab's result panel, scrolled from its top; the footer keeps the one-line outcome.
       if (spec.lab !== undefined) {
-        panel.result = { id: spec.lab, label: spec.label, ok, exitCode: result.exitCode, ...(spec.note !== undefined && { note: spec.note }), lines: spec.read?.(result.stdout, result.stderr, ok) ?? (spec.lines ?? ((out, err) => labLines(spec.lab ?? '', out, err)))(result.stdout, result.stderr), atMs: Date.now() }
+        panel.result = { id: spec.lab, label: spec.label, ok, exitCode: result.exitCode, ...(spec.note !== undefined && { note: spec.note }), lines: resultLines(spec, result.stdout, result.stderr, ok), atMs: Date.now() }
         state.select.item = 0
       }
       // Keyed on the exit, not on `ok`: relay text in a read may carry an "error" key of its own.

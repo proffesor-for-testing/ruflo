@@ -7,9 +7,9 @@
  * The latency samples each run reports are kept per State here for the view's sparklines. Pure: no `$`.
  */
 import { exec } from './actions'
-import { finiteIn, shownOf } from './data/bounds'
+import { countOf, finiteIn, measureOf } from './data/bounds'
 import { jsonAfter } from './data/cli'
-import { plain, recordOf } from './data/parse'
+import { labelOf, plain, recordOf } from './data/parse'
 import { labLines } from './mh-lab'
 import { mcpReader, textLines, type Reader, type SecCost } from './secure'
 import type { State } from './state'
@@ -78,7 +78,7 @@ export const metricsReader: Reader = (stdout, stderr, state) => {
   return [
     `event-loop latency ${ms(avg)} · heap ${mb(memory.heapUsed)} of ${mb(memory.heapTotal)} · rss ${mb(memory.rss)}`,
     `system memory ${share(memory.systemPercent, 100, 0)} · load ${load}`,
-    `embedding cache ~${shownOf(cache.entries)} entries · HNSW ${shownOf(cache.hnswEntries)} entries`,
+    `embedding cache ~${countOf(cache.entries) ?? 'n/a'} entries · HNSW ${countOf(cache.hnswEntries) ?? 'n/a'} entries`,
     'measured in the CLI process at the moment it ran: one sample per run',
   ]
 }
@@ -91,8 +91,8 @@ export const benchReader: Reader = (stdout, stderr) => {
   if (record === null || results === undefined) return textLines(stdout, stderr)
 
   return [
-    `suite ${plain(String(record.suite ?? 'n/a'), 12)} · ${shownOf(record.iterations)} iterations · ${plain(shownOf(record.totalTime), 12)}`,
-    ...results.map(row => `${plain(String(row.operation ?? ''), 24).padEnd(24)} mean ${plain(shownOf(row.mean, ''), 12)} · p95 ${plain(shownOf(row.p95, ''), 12)} · p99 ${plain(shownOf(row.p99, ''), 12)} · ${plain(shownOf(row.improvement, ''), 24)}`),
+    `suite ${labelOf(record.suite, 12, 'n/a')} · ${countOf(record.iterations) ?? 'n/a'} iterations · ${measureOf(record.totalTime)}`,
+    ...results.map(row => `${labelOf(row.operation, 24).padEnd(24)} mean ${measureOf(row.mean, '')} · p95 ${measureOf(row.p95, '')} · p99 ${measureOf(row.p99, '')} · ${typeof row.improvement === 'string' ? plain(row.improvement, 24) : measureOf(row.improvement, '')}`),
   ]
 }
 
@@ -117,7 +117,7 @@ export const reportReader: Reader = (stdout, stderr, state) => {
   memo.atMs = Date.now()
 
   return [
-    `cpu ${share(cpu.usage, 100_000, 1)} of ${shownOf(cpu.cores)} cores · memory ${shownOf(memory.used)} of ${shownOf(memory.total)} MB · heap ${shownOf(memory.heap)} MB`,
+    `cpu ${share(cpu.usage, 100_000, 1)} of ${countOf(cpu.cores) ?? 'n/a'} cores · memory ${measureOf(memory.used)} of ${measureOf(memory.total)} MB · heap ${measureOf(memory.heap)} MB`,
     `latency avg ${ms(latency.avg)} · p50 ${ms(latency.p50)} · p95 ${ms(latency.p95)} · p99 ${ms(latency.p99)}`,
     `history: ${history.length} stored sample${history.length === 1 ? '' : 's'} in .claude-flow/performance/metrics.json`,
     ...labLines('performance_report', JSON.stringify({ trends: result.trends, recommendations: result.recommendations })).slice(0, 12),

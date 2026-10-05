@@ -6,7 +6,7 @@
  * each tolerates any shape: what it cannot read is left out, never guessed. Nothing here keeps the hive's `hiveToken`.
  */
 
-import { countOf, dateMsOf, ratioOf } from './bounds'
+import { countOf, dateMsOf, ratioOf, shownOf } from './bounds'
 
 /** Text longer than this is not parsed: a store that size is not one the CLI wrote, and parsing it would stall a hook. */
 export const MAX_TEXT = 4_000_000
@@ -40,6 +40,8 @@ export function idOf(value: unknown): string | null {
 
 export const numberOf = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? value : undefined)
 export const stringOf = (value: unknown, max = 80): string | undefined => (typeof value === 'string' && value !== '' ? plain(value, max) || undefined : undefined)
+/** A field drawn as a name, id or sentence: a string (cleaned, capped), a boolean, a whole non-negative number; anything else (-1, 1e308, {}) reads `fallback`. */
+export const labelOf = (value: unknown, max = 80, fallback = ''): string => typeof value === 'string' ? plain(value, max) : typeof value === 'boolean' ? String(value) : typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? String(value) : fallback
 export const recordOf = (value: unknown): Record<string, unknown> | null =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null
 
@@ -237,7 +239,7 @@ function resultTextOf(value: unknown): string | undefined {
 
   const text = Object.entries(result)
     .slice(0, 8)
-    .flatMap(([key, v]) => (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' ? [`${plain(key, 24)}: ${plain(String(v), 160)}`] : []))
+    .flatMap(([key, v]) => (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' ? [`${plain(key, 24)}: ${plain(shownOf(v), 160)}`] : []))
     .join(' · ')
 
   return text === '' ? undefined : text.slice(0, 500)

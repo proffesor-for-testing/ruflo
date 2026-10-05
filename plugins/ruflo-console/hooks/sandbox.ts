@@ -5,7 +5,7 @@
  * agenticow rows (group `cow`), drawn here too. RVM is information only: no ruflo command or MCP tool reads or changes it. These
  * entries join `DEV`, so the confirm row, the palette ids and the self-check treat them like every other Dev Tools row. Pure.
  */
-import { isoOf } from './data/bounds'
+import { countOf, isoOf } from './data/bounds'
 import { need } from './data/devtools'
 import { plain } from './data/parse'
 import type { Host } from './host'
@@ -35,7 +35,9 @@ export function sandboxLines(stdout: string, stderr: string, ok: boolean): strin
   return rows.map(([name = '', windows = '?', created = '0']) => {
     const at = isoOf(Number(created) > 0 ? Number(created) * 1000 : null)
 
-    return `${plain(name.slice(SANDBOX_PREFIX.length), 40)} · ${windows} window${windows === '1' ? '' : 's'}${at !== undefined ? ` · started ${at.slice(0, 16).replace('T', ' ')}Z` : ''}`
+    const count = /^\d{1,6}$/.test(windows.trim()) ? countOf(Number(windows)) : undefined
+
+    return `${plain(name.slice(SANDBOX_PREFIX.length), 40)} · ${count ?? 'n/a'} window${count === 1 ? '' : 's'}${at !== undefined ? ` · started ${at.slice(0, 16).replace('T', ' ')}Z` : ''}`
   })
 }
 

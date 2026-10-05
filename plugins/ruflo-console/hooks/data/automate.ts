@@ -6,7 +6,7 @@
  *
  * Config values are masked as they are parsed, so a secret never reaches the state, the result panel or a log line.
  */
-import { countOf, finiteIn } from './bounds'
+import { boundedJson, countOf, finiteIn } from './bounds'
 import { closeOf } from './json-span'
 import { idOf, msOf, plain, recordOf, stringOf } from './parse'
 
@@ -96,7 +96,7 @@ export function shownValue(key: string, value: unknown): { shown: string; isSecr
   if (isSecret) return { shown: MASK, isSecret: true }
   if (value === undefined) return { shown: 'n/a', isSecret: false }
 
-  return { shown: plain(typeof value === 'string' ? value : JSON.stringify(value) ?? String(value), 80), isSecret: false }
+  return { shown: plain(typeof value === 'string' ? value : (boundedJson(value) ?? 'n/a'), 80), isSecret: false }
 }
 
 /** A typed config value as `config_set` stores it: true/false and plain numbers keep their type, the rest is text. */

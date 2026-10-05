@@ -44,3 +44,13 @@ export const usdOf = (value: unknown): number | undefined => finiteIn(value, 0, 
  */
 export const shownOf = (value: unknown, fallback = 'n/a'): string =>
   typeof value === 'string' || typeof value === 'boolean' ? String(value) : typeof value === 'number' ? (finiteIn(value, -1e15, 1e15) === undefined ? 'n/a' : String(Math.round(value * 1000) / 1000)) : fallback
+
+/** A measured amount that is never negative (a duration, a size in MB, a time in ms): within 0..1e15, three places, else `fallback`. */
+export const measureOf = (value: unknown, fallback = 'n/a'): string => (finiteIn(value, 0, 1e15) === undefined ? fallback : String(Math.round((value as number) * 1000) / 1000))
+
+/**
+ * A JSON value as text with every number bounded as shownOf bounds it (1e308 reads "n/a", 12.3456789 reads 12.346): for a value a
+ * reader shows whole (a stored memory entry, a config value), so a number inside it is held like every other drawn number.
+ */
+export const boundedJson = (value: unknown, space?: number): string | undefined =>
+  JSON.stringify(value, (_key, field: unknown) => (typeof field === 'number' ? (finiteIn(field, -1e15, 1e15) === undefined ? 'n/a' : Math.round(field * 1000) / 1000) : field), space)
