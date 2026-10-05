@@ -12,8 +12,10 @@ const SECRETS: readonly (readonly [string, RegExp])[] = [
   ['anthropic or openai key', /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{24,}/],
   ['jwt', /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/],
   ['bearer token', /\bBearer\s+[A-Za-z0-9._~+/=-]{24,}/],
-  // The keyword may sit inside an _ or - separated name: GITHUB_TOKEN=, aws_secret_access_key =, "client_secret":.
-  ['key assignment', /(?<![A-Za-z0-9_-])(?:[A-Za-z0-9]+[_-])*(?:api[_-]?key|secret|token|passw(?:or)?d|credential)s?(?:[_-][A-Za-z0-9]+)*["']?\s*[:=]\s*["']?[A-Za-z0-9/+=_.-]{16,}/i],
+  // The keyword ends an _ or - separated name (GITHUB_TOKEN=, "client_secret":), optionally then _key / _access_key
+  // (aws_secret_access_key =). Names that only start with it (TOKEN_URL=, MAX_TOKENS=) and all-digit values do not
+  // match, and nothing after the keyword can backtrack against it (linear on 'token_token_...').
+  ['key assignment', /(?<![A-Za-z0-9_-])(?:[A-Za-z0-9]+[_-])*(?:api[_-]?key|secret|token|passw(?:or)?d|credential)s?(?:[_-](?:access[_-]?)?key)?["']?\s*[:=]\s*["']?(?=[A-Za-z0-9/+=_.-]*[A-Za-z])[A-Za-z0-9/+=_.-]{16,}/i],
 ]
 
 const INJECTION: readonly (readonly [string, RegExp])[] = [
@@ -46,7 +48,10 @@ export function windows(text: string): string[] {
   if (clean.length <= WINDOW) return [clean]
   const out: string[] = []
   for (let start = 0; start < clean.length; start += WINDOW - OVERLAP) {
-    out.push(clean.slice(start, start + WINDOW))
+    // A later window starts after whitespace, so a rule's lookbehind, \b and ^ never see a word cut in half.
+    const ws = start === 0 ? -1 : clean.slice(start, start + 256).search(/\s/)
+    const from = ws >= 0 ? start + ws + 1 : start
+    out.push(clean.slice(from, start + WINDOW))
     if (start + WINDOW >= clean.length) break
   }
   return out

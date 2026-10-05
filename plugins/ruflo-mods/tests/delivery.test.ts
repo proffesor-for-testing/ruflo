@@ -120,6 +120,33 @@ describe('screen coverage: prefixed keys, padding, invisible characters, more se
     for (const t of ['tokenizer: bert-base-uncased-model-v2', 'max_tokens: 4096', 'the secretary: Josephine-Baker-Smith']) expect(screenOutbound(t), t).toBeUndefined()
   })
 
+  test('config names that merely start with a keyword, and all-digit values, are not credentials', () => {
+    for (const t of [
+      'token_count = 1234567890123456', 'MAX_TOKENS=1000000000000000000', 'session_token_ttl=86400000000000000',
+      'TOKEN_URL=/api/v1/oauth/token/refresh', 'CREDENTIALS_FILE=/etc/app/credentials.json', 'SECRET_MANAGER_PROJECT=cognitum-20260110',
+      'password_reset_path: /users/password/reset/confirm', 'api_key_header: X-Api-Key-Header-Name', 'password_hash_algorithm: argon2id-v19-memory-cost',
+    ]) expect(screenOutbound(t), t).toBeUndefined()
+    for (const t of ['SECRET_KEY=abcdefghijklmnop0123', 'api_key: "abcdef0123456789abcdef"']) expect(screenOutbound(t), t).toBe('key assignment')
+  })
+
+  test('the key rule stays linear on adversarial names (no backtracking blow-up)', () => {
+    for (const unit of ['token_', 'token-', 'tokens_', 'api_key_', 'a_secret_']) {
+      const t0 = Date.now()
+      expect(screenOutbound(unit.repeat(Math.ceil(1_000_000 / unit.length)))).toBeUndefined()
+      expect(Date.now() - t0, unit).toBeLessThan(1_500)
+    }
+  })
+
+  test('a window boundary never cuts a word: text that passes unpadded passes padded', () => {
+    for (const tail of ['secret=abcdefghijklmnopqrstu', 'system: hi']) {
+      // 20,000 - 1,024 = 18,976 is where the second window starts; the trailing text makes two windows.
+      for (const n of [18_970, 18_976, 18_980]) {
+        const t = 'q'.repeat(n) + tail + ' ' + 'z'.repeat(2_000)
+        expect(screenOutbound(t) ?? screenInbound(t), `${n}`).toBeUndefined()
+      }
+    }
+  })
+
   test('padding cannot push a phrase or a secret past the screen', () => {
     for (const pad of ['x'.repeat(20_000), ' '.repeat(19_990), 'y'.repeat(100_000)]) {
       expect(screenOutbound(pad + ' ghp_' + 'a'.repeat(36))).toBe('github token')
