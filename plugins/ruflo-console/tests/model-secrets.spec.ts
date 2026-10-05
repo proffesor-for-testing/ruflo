@@ -155,3 +155,30 @@ describe('labels the person typed never carry a secret to the model', () => {
     expect(answer).not.toContain(CODE.slice(9, 15))
   })
 })
+
+describe('the settle answer and control characters', () => {
+  it('the "waiting" settle answer withholds a token in the expectation', async () => {
+    const { setup } = await import('./fixtures/control-setup')
+    const { state, deps } = setup('full', 'ask', { 'set-opt': { label: 'set opt' } })
+    const runner = (deps as unknown as { control: { runner: { runById: (id: string) => boolean } } }).control.runner
+
+    runner.runById = () => ((state.pending = { label: 'set ruflo-x token', args: [], expect: `ruflo-x token = ${TOKEN}`, askedAtMs: Date.now() }), true)
+    const answer = await callTool('console_run', { id: 'set-opt' }, deps)
+
+    expect(answer).toMatch(/Waiting/)
+    expect(answer).not.toContain(TOKEN)
+  })
+
+  it('an invite split by a C0 or C1 control character is still masked, and an escape sequence leaves no residue', async () => {
+    const { state } = await stateAfter('memory list', '[OK] nothing\n')
+    const control = { host: { invalidate: () => undefined, after: () => ({ cancel: () => undefined }) }, setView: () => undefined, open: async () => undefined, actions: deepNoop(), runner: {} }
+    const deps = { state, control } as unknown as ModelToolDeps
+
+    state.outcome = { label: 'joined', ok: true, verified: 'n/a', detail: `code ${CODE.slice(0, 6)}\u0001${CODE.slice(6)}`, atMs: Date.now(), lines: [`code ${CODE.slice(0, 6)}\u0085${CODE.slice(6)}`, '\u001b[31mred\u001b[0m done'] }
+    const answer = await callTool('console_state', {}, deps)
+
+    expect(answer).not.toContain(CODE.slice(6, 14))
+    expect(answer).toContain('red done')
+    expect(answer).not.toContain('[31m')
+  })
+})

@@ -8,7 +8,7 @@
 import type { Register } from 'claude-code'
 
 import type { Controller } from './controller'
-import { plain } from './data/parse'
+import { ESCAPES, plain } from './data/parse'
 import { askedBy } from './data/room'
 import { DEV_FIELDS } from './data/devtools'
 import { PROFILES, RIGORS } from './goap'
@@ -149,8 +149,9 @@ const leaksSecret = (raw: unknown, cleaned: string): boolean => (typeof raw === 
 
 const textOf = (value: unknown): string => (typeof value === 'string' ? plain(value, MAX_TEXT).trim() : '')
 
-// Zero-width, bidi and other format characters: nothing a person reads, and enough to split a code so a pattern misses it.
-const INVISIBLE = new RegExp('[\\u00ad\\u034f\\u061c\\u115f\\u1160\\u17b4\\u17b5\\u180b-\\u180f\\u200b-\\u200f\\u202a-\\u202e\\u2060-\\u206f\\u3164\\ufe00-\\ufe0f\\ufeff\\uffa0\\ufff9-\\ufffb]|[\\u{e0000}-\\u{e0fff}]', 'gu')
+// Control (bar tab and line breaks; escape sequences go first), zero-width, bidi and other format characters: nothing a person
+// reads, and enough to split a code so a pattern misses it.
+const INVISIBLE = new RegExp('[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f-\\u009f\\u00ad\\u034f\\u061c\\u115f\\u1160\\u17b4\\u17b5\\u180b-\\u180f\\u200b-\\u200f\\u202a-\\u202e\\u2060-\\u206f\\u3164\\ufe00-\\ufe0f\\ufeff\\uffa0\\ufff9-\\ufffb]|[\\u{e0000}-\\u{e0fff}]', 'gu')
 
 const SECRET_LINE = '(a line that looks like a secret: not shown)'
 
@@ -158,7 +159,7 @@ const SECRET_LINE = '(a line that looks like a secret: not shown)'
 const modelLine = (line: string, max: number): string => {
   // Invisible characters go first (not to a space, as plain() does), and codes are masked before the cut too, so an invite split
   // by a zero-width character or cut by the length limit is still masked.
-  const joined = line.replace(INVISIBLE, '')
+  const joined = line.replace(ESCAPES, '').replace(INVISIBLE, '')
   const text = maskInvites(plain(maskInvites(joined), max))
 
   return hasSecret(line) || hasSecret(joined) || hasSecret(text) ? SECRET_LINE : text
@@ -267,7 +268,7 @@ async function settlePending(deps: ModelToolDeps, tool: string, id: string, aske
   if (confirmOf(ai.modelConfirm) === 'ask' || ALWAYS_ASK.includes(kind) || over) {
     say(state, tool, id, 'waiting', pending.label)
 
-    return { status: 'waiting', text: `Waiting for the person to confirm in the console: "${modelLine(pending.label, 100)}" (${kind}${over ? `; the session budget of ${budget} auto-confirmed ${kind} actions is used up` : ''}). Expect: ${plain(pending.expect, 160)}. Do not repeat it; call console_state later to see the result.` }
+    return { status: 'waiting', text: `Waiting for the person to confirm in the console: "${modelLine(pending.label, 100)}" (${kind}${over ? `; the session budget of ${budget} auto-confirmed ${kind} actions is used up` : ''}). Expect: ${modelLine(pending.expect, 160)}. Do not repeat it; call console_state later to see the result.` }
   }
 
   // Mission Control reports its own actions on `last`, the rest on `outcome`: whichever moved is what happened.
