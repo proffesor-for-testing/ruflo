@@ -122,7 +122,7 @@ export function optionsOf(raw: PluginOptions | undefined): Options {
   const value = (raw ?? {}) as Record<string, unknown>
 
   return {
-    cli: typeof value.cli === 'string' && value.cli in CLI_PREFIXES ? (value.cli as CliChoice) : 'npx-offline',
+    cli: typeof value.cli === 'string' && Object.hasOwn(CLI_PREFIXES, value.cli) ? (value.cli as CliChoice) : 'npx-offline',
     refreshSeconds: num(value.refreshSeconds, 3, 2, 60),
     fps: num(value.fps, 8, 0, 12),
     bar: value.bar === 'on' || value.bar === 'off' ? value.bar : 'auto',

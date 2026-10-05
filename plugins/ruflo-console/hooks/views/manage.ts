@@ -5,6 +5,7 @@
 import type { RenderElement } from 'claude-code'
 
 import { approvalsOf } from '../data/alerts'
+import { isoOf } from '../data/bounds'
 import { EVENT_KINDS } from '../data/events'
 import type { Lane } from '../gfx/maps'
 import { sparkline } from '../memory-lines'
@@ -141,7 +142,7 @@ export function eventsView(ctx: Ctx): RenderElement {
 
     if (isOpen) {
       rows.push(text(ctx, `     ${event.text}`, { bold: true }))
-      rows.push(text(ctx, `     ${event.kind} · ${new Date(event.atMs).toISOString()}${event.agentId === undefined ? '' : ` · agent ${event.agentId}`}`, { dimColor: true }))
+      rows.push(text(ctx, `     ${event.kind} · ${isoOf(event.atMs) ?? 'n/a'}${event.agentId === undefined ? '' : ` · agent ${event.agentId}`}`, { dimColor: true }))
       rows.push(row(ctx, [ctx.kit.Button({ key: 'ev-ask', label: ' ✦ ask Claude about this event ', plain: true, onPress: () => ctx.act.watch.ask(`This event appeared in my ruflo console: "${event.text}" (kind ${event.kind}). What does it mean, and should I do anything?`) })], 'ev-detail'))
     }
   }

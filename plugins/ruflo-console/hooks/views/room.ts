@@ -1,5 +1,6 @@
 import type { RenderElement } from 'claude-code'
 
+import { isoOf } from '../data/bounds'
 import { isBlocked, pendingBanner, roomFeed, SAY_IDS, SAY_LABEL, VIEW_OF_KIND, type RoomItem, type RoomSource } from '../data/room'
 import { PENDING_TTL_MS } from '../runner'
 import { ROOM_PAGE, roomOf } from '../room'
@@ -103,7 +104,7 @@ export function roomView(ctx: Ctx): RenderElement {
       const target = item.kind === undefined ? undefined : VIEW_OF_KIND[item.kind]
       const view = target === undefined ? undefined : VIEWS.find(entry => entry.id === target)
 
-      rows.push(text(ctx, `     ${item.text}  ·  ${new Date(item.atMs).toISOString()}`, { dimColor: true }))
+      rows.push(text(ctx, `     ${item.text}  ·  ${isoOf(item.atMs) ?? 'n/a'}`, { dimColor: true }))
       rows.push(row(ctx, [text(ctx, `     ${item.source === 'event' ? `event: ${item.kind ?? 'unknown'}` : item.source === 'claude' ? 'a console action by Claude' : 'what you said'}${isBlocked(item) ? ' · refused or failed' : ''}`, { dimColor: true }), ...(view === undefined ? [] : [button(ctx, `room-jump-${item.id}`, `jump to ${view.label}`, () => ctx.act.view(view.id as ViewId))])], `room-detail-${item.id}`))
     }
   }

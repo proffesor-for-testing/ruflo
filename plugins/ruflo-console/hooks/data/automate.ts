@@ -6,6 +6,7 @@
  *
  * Config values are masked as they are parsed, so a secret never reaches the state, the result panel or a log line.
  */
+import { closeOf } from './json-span'
 import { idOf, msOf, numberOf, plain, recordOf, stringOf } from './parse'
 
 export type WorkflowRow = { id: string; name: string; status: string; steps: number; createdAtMs?: number }
@@ -124,8 +125,9 @@ export function relPathOf(value: string): string | null {
 }
 
 /**
- * The JSON object a run printed: from the first line that opens one to the last brace. Not `jsonAfter`, which also takes
- * a line opening `[`: `hooks route` prints `[hooks] Semantic router initialized…` before its JSON.
+ * The JSON object a run printed: from the first line that opens one to the brace that closes it (closeOf, as in jsonAfter: a trailing
+ * log line holding a stray `}` is not part of it, #3789). Not `jsonAfter`, which also takes a line opening `[`: `hooks route` prints
+ * `[hooks] Semantic router initialized…` before its JSON.
  */
 export function objectIn(stdout: string): Record<string, unknown> | null {
   const text = stdout.length > 1_000_000 ? stdout.slice(0, 1_000_000) : stdout
@@ -133,8 +135,13 @@ export function objectIn(stdout: string): Record<string, unknown> | null {
 
   if (start === null) return null
 
+  const open = start.index + start[0].length - 1
+  const end = closeOf(text, open)
+
+  if (end < 0) return null
+
   try {
-    return recordOf(JSON.parse(text.slice(start.index, text.lastIndexOf('}') + 1)))
+    return recordOf(JSON.parse(text.slice(open, end + 1)))
   } catch {
     return null
   }

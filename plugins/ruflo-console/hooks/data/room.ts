@@ -61,16 +61,25 @@ export function roomFeed(input: FeedInput): RoomItem[] {
   const out: RoomItem[] = []
   const want = (source: RoomSource) => input.source === 'all' || input.source === source
   const until = input.untilMs ?? Number.POSITIVE_INFINITY
+  // Items of one pass share atMs (two agents spawned in one read): the base id repeats, so the nth repeat gets its ordinal and every id stays unique.
+  const seen = new Map<string, number>()
+  const uniqueId = (base: string): string => {
+    const n = seen.get(base) ?? 0
 
-  if (want('event')) for (const e of input.events) if (e.atMs <= until) out.push({ id: `event:${e.atMs}:${e.text.length}`, atMs: e.atMs, source: 'event', who: e.kind, text: plain(e.text, 200), tone: EVENT_TONE[e.kind] ?? 'info', kind: e.kind })
-  if (want('claude')) for (const c of input.log) if (c.atMs <= until) out.push({ id: `claude:${c.atMs}:${c.summary.length}`, atMs: c.atMs, source: 'claude', who: 'claude', text: plain(`${c.summary}${c.detail === '' ? '' : ` — ${c.detail}`}`, 200), tone: CONTROL_TONE[c.outcome] })
+    seen.set(base, n + 1)
+
+    return n === 0 ? base : `${base}:${n}`
+  }
+
+  if (want('event')) for (const e of input.events) if (e.atMs <= until) out.push({ id: uniqueId(`event:${e.atMs}:${e.text.length}`), atMs: e.atMs, source: 'event', who: e.kind, text: plain(e.text, 200), tone: EVENT_TONE[e.kind] ?? 'info', kind: e.kind })
+  if (want('claude')) for (const c of input.log) if (c.atMs <= until) out.push({ id: uniqueId(`claude:${c.atMs}:${c.summary.length}`), atMs: c.atMs, source: 'claude', who: 'claude', text: plain(`${c.summary}${c.detail === '' ? '' : ` — ${c.detail}`}`, 200), tone: CONTROL_TONE[c.outcome] })
   if (want('said')) {
     for (const s of input.said) {
       if (s.atMs > until) continue
 
       const status = saidStatus(s, input.pending, input.outcome)
 
-      out.push({ id: `said:${s.atMs}:${s.text.length}`, atMs: s.atMs, source: 'said', who: 'you', text: plain(`${SAY_LABEL[s.id]}: ${s.text} (${status.text})`, 240), tone: status.tone })
+      out.push({ id: uniqueId(`said:${s.atMs}:${s.text.length}`), atMs: s.atMs, source: 'said', who: 'you', text: plain(`${SAY_LABEL[s.id]}: ${s.text} (${status.text})`, 240), tone: status.tone })
     }
   }
 

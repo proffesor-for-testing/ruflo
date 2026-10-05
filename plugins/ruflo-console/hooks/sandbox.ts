@@ -5,6 +5,7 @@
  * agenticow rows (group `cow`), drawn here too. RVM is information only: no ruflo command or MCP tool reads or changes it. These
  * entries join `DEV`, so the confirm row, the palette ids and the self-check treat them like every other Dev Tools row. Pure.
  */
+import { isoOf } from './data/bounds'
 import { need } from './data/devtools'
 import { plain } from './data/parse'
 import type { Host } from './host'
@@ -32,9 +33,9 @@ export function sandboxLines(stdout: string, stderr: string, ok: boolean): strin
   if (rows.length === 0) return [ok || /no server running/.test(stderr) ? `no sandbox sessions yet${ok ? '' : ' (tmux has no server running)'}: NEW starts one` : `✗ ${plain(stderr, 160) || 'tmux refused'}`]
 
   return rows.map(([name = '', windows = '?', created = '0']) => {
-    const at = Number(created)
+    const at = isoOf(Number(created) > 0 ? Number(created) * 1000 : null)
 
-    return `${plain(name.slice(SANDBOX_PREFIX.length), 40)} · ${windows} window${windows === '1' ? '' : 's'}${Number.isFinite(at) && at > 0 ? ` · started ${new Date(at * 1000).toISOString().slice(0, 16).replace('T', ' ')}Z` : ''}`
+    return `${plain(name.slice(SANDBOX_PREFIX.length), 40)} · ${windows} window${windows === '1' ? '' : 's'}${at !== undefined ? ` · started ${at.slice(0, 16).replace('T', ' ')}Z` : ''}`
   })
 }
 

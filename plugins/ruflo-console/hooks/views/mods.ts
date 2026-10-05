@@ -1,5 +1,6 @@
 import type { RenderElement } from 'claude-code'
 
+import { isoOf } from '../data/bounds'
 import { isStale, NO_MODS, type ModRow } from '../data/mods'
 import { plain } from '../data/parse'
 import { roomOf } from '../room'
@@ -12,7 +13,7 @@ const REASON_WORDS: Record<string, string> = { 'secret': 'a secret or credential
 /** The detail block for one mod: every field its status file reported, as plain capped text; fields it did not report say so. */
 export function modDetail(ctx: Ctx, mod: ModRow): RenderElement[] {
   const stale = isStale(mod, ctx.nowMs)
-  const when = (ms: number | null | undefined) => (ms === null || ms === undefined ? 'not reported' : `${ago(ms, ctx.nowMs)} (${new Date(ms).toISOString()})`)
+  const when = (ms: number | null | undefined) => (ms === null || ms === undefined ? 'not reported' : `${ago(ms, ctx.nowMs)} (${isoOf(ms) ?? 'out of range'})`)
   const line = (label: string, value: string, color?: string) => text(ctx, `     ${label.padEnd(13)}${plain(value, Math.max(20, ctx.columns - 22))}`, color === undefined ? { dimColor: true } : { color })
 
   return [

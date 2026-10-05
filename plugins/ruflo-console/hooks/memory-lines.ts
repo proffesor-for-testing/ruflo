@@ -4,6 +4,7 @@
  * reads JSON. The CLI's own warnings that change the meaning of an answer (a second store it did not read, a key not
  * found) are kept, first. And the recency binning the view draws as a timeline. Pure: strings in, strings out.
  */
+import { isoOf } from './data/bounds'
 import { jsonAfter } from './data/cli'
 import { msOf, numberOf, plain, recordOf } from './data/parse'
 import { labLines } from './mh-lab'
@@ -63,8 +64,8 @@ const score = (value: unknown): string => (typeof value === 'number' && Number.i
 function entryLines(record: Record<string, unknown>): string[] {
   const value = record.content ?? record.value
   const body = typeof value === 'string' ? value : JSON.stringify(value ?? null, null, 2)
-  const updated = msOf(record.updatedAt ?? record.storedAt)
-  const head = `${short(record.namespace, 40)}/${short(record.key, 128)} · ${body.length} chars · read ${numberOf(record.accessCount) ?? 'n/a'}× · ${record.hasEmbedding === true ? 'has a vector' : 'no vector'}${updated !== undefined ? ` · updated ${new Date(updated).toISOString().slice(0, 16).replace('T', ' ')}` : ''}`
+  const updated = isoOf(msOf(record.updatedAt ?? record.storedAt))
+  const head = `${short(record.namespace, 40)}/${short(record.key, 128)} · ${body.length} chars · read ${numberOf(record.accessCount) ?? 'n/a'}× · ${record.hasEmbedding === true ? 'has a vector' : 'no vector'}${updated !== undefined ? ` · updated ${updated.slice(0, 16).replace('T', ' ')}` : ''}`
 
   return [head, ...(Array.isArray(record.tags) && record.tags.length > 0 ? [`tags: ${record.tags.map(tag => short(tag, 24)).join(', ')}`] : []), '', ...wrap(body)]
 }
@@ -98,9 +99,9 @@ function listLines(rows: unknown[]): string[] {
   return [
     `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}`,
     ...entries.slice(0, 60).map(row => {
-      const at = msOf(row.updatedAt ?? row.createdAt ?? row.storedAt)
+      const at = isoOf(msOf(row.updatedAt ?? row.createdAt ?? row.storedAt))
 
-      return `${row.hasEmbedding === true ? '◆' : '◇'} ${short(row.namespace, 24)}/${short(row.key, 80)} · ${numberOf(row.size) ?? 'n/a'} B${at !== undefined ? ` · ${new Date(at).toISOString().slice(0, 16).replace('T', ' ')}` : ''}`
+      return `${row.hasEmbedding === true ? '◆' : '◇'} ${short(row.namespace, 24)}/${short(row.key, 80)} · ${numberOf(row.size) ?? 'n/a'} B${at !== undefined ? ` · ${at.slice(0, 16).replace('T', ' ')}` : ''}`
     }),
   ]
 }
@@ -188,9 +189,10 @@ export function sparkline(counts: readonly number[]): string {
   return counts.map(n => (n === 0 ? '·' : (SPARK[Math.max(1, Math.round((n / top) * 8))] ?? '█'))).join('')
 }
 
-/** A filled share of `width` cells: ████░░░░. */
+/** A filled share of `width` cells: ████░░░░. A negative, NaN or infinite part draws empty, never a RangeError from repeat. */
 export function gauge(part: number, whole: number, width: number): string {
-  const filled = whole <= 0 ? 0 : Math.round((Math.min(part, whole) / whole) * width)
+  const share = Number.isFinite(whole) && whole > 0 && Number.isFinite(part) ? Math.round((Math.min(part, whole) / whole) * width) : 0
+  const filled = Math.max(0, Math.min(width, share))
 
   return `${'█'.repeat(filled)}${'░'.repeat(Math.max(0, width - filled))}`
 }

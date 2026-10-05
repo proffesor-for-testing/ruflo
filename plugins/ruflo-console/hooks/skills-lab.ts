@@ -7,7 +7,7 @@
  * click; every change is one fixed argv on the confirm row, its cost in words beside it.
  */
 import type { ActionSpec } from './actions'
-import { readBounded, textOf, under, type ReaderFs } from './data/files'
+import { READ_MAX, readBounded, textOf, under, type ReaderFs } from './data/files'
 import { plain } from './data/parse'
 import { checkLines, checkSkillMd, inferStack, skillRefs } from './data/skill-md'
 import { AGENT_TARGETS, agentsOf, findArgv, listRepoArgv, nameInId, newNameOf, parseRepoList, restoreArgv, skillIdOf, skillNameOf, sortedFound, syncArgv, updateAllArgv, useArgv, usePromptOf, type FoundSkill, type InstalledSkill, type Scope } from './data/skills'
@@ -131,7 +131,8 @@ export const isSafeDir = (path: string): boolean => path.startsWith('/') && !pat
 
 /** Reads a SKILL.md (bounded), checks it and keeps the result as the preview; never runs it. */
 async function previewFile(state: State, fs: ReaderFs, title: string, path: string, folder: string): Promise<void> {
-  const read = await readBounded(fs, state.cache, path)
+  // A linked SKILL.md is refused (not-regular), never followed to its target.
+  const read = await readBounded(fs, state.cache, path, READ_MAX, true)
   const text = textOf(read)
 
   if (text === null) {
