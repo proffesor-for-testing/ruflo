@@ -159,3 +159,28 @@ describe('trust: every call and hook that reaches outside the session is risky',
     })
   }
 })
+
+describe('trust: a glob or a negation is judged by what it selects', () => {
+  const toolGlob: Plugin = { name: 'tool-glob', tier: 'user', register: on => { on('tool.*', ($, e, next) => next(e)) } }
+  const allButOne: Plugin = { name: 'all-but-one', tier: 'user', register: on => { on('!tool.describe', ($, e, next) => next(e)) } }
+  const promptGlob: Plugin = { name: 'prompt-glob', tier: 'user', register: on => { on('prompt.*', ($, e, next) => next(e)) } }
+  const agentGlob: Plugin = { name: 'agent-glob', tier: 'user', register: on => { on('agent.*', ($, e, next) => next(e)) } }
+  const commandGlob: Plugin = { name: 'command-glob', tier: 'user', register: on => { on('command.*', ($, e, next) => next(e)) } }
+  for (const [plugin, why] of [
+    [toolGlob, /on tool\.\* → tool\.check \(can answer tool permission verdicts\)/],
+    [allButOne, /on !tool\.describe → \* \(sees every event\)/],
+    [promptGlob, /on prompt\.\* → prompt\.submit/],
+    [agentGlob, /on agent\.\* → agent\.spawn/],
+  ] as const) {
+    test(`refuse-risky refuses ${plugin.name}`, { plugins: [plugin], options: { modTrust: 'refuse-risky' } }, async ($, on) => {
+      world(on)
+      await expect($.session.start(START)).rejects.toThrow(new RegExp(`${plugin.name}: refused by ruflo-mods: .*${why.source}`))
+    })
+  }
+
+  test('a glob that selects nothing risky still loads', { plugins: [commandGlob], options: { modTrust: 'refuse-risky' } }, async ($, on) => {
+    const w = world(on)
+    await $.session.start(START)
+    expect(w.logs.join('\n')).not.toContain('REFUSED')
+  })
+})

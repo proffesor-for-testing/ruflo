@@ -54,6 +54,32 @@ const RISKY_EVENTS: Record<string, string> = {
   'agent.spawn': 'can rewrite or answer subagent spawns',
   'tool.describe': 'can rewrite the tool descriptions the model reads',
   'session.append': 'can rewrite every row added to the conversation',
+  'prompt.section': 'can rewrite system prompt sections',
+  'prompt.context': 'can rewrite the context added to prompts',
+  'prompt.attachment': 'can rewrite prompt attachments',
+  'skill.prompt': 'can rewrite skill prompts',
+  'session.receive': 'can rewrite or drop messages from other agents',
+  'turn.step': 'can rewrite or answer every model request',
+  'process.run': "can rewrite or answer other mods' host commands",
+  'http.fetch': "can rewrite or answer other mods' network requests",
+  'mcp.call': "can rewrite or answer other mods' MCP calls",
+}
+
+/**
+ * The risky events a registered pattern reaches. The scan reports patterns as
+ * written, so a glob (`tool.*`) or a negation (`!tool.describe`, every event
+ * but one) must be judged by what it selects, not by its spelling.
+ */
+const escapeRe = (text: string) => text.replace(/[.+?^$()|[\]{}\\]/g, '\\$&')
+
+function riskyEventsOf(pattern: string): string[] {
+  if (Object.hasOwn(RISKY_EVENTS, pattern)) return [pattern]
+  if (pattern.startsWith('!')) return ['*']
+  // Any settings hook, one by name or a glob of them, can answer it.
+  if (pattern.startsWith('classic.')) return ['classic.*']
+  if (!pattern.includes('*')) return []
+  const glob = new RegExp(`^${pattern.split('*').map(escapeRe).join('.*')}$`)
+  return Object.keys(RISKY_EVENTS).filter(name => name !== '*' && name !== 'classic.*' && glob.test(name))
 }
 
 const isStrings = (v: unknown): v is readonly string[] => Array.isArray(v) && v.every(s => typeof s === 'string')
@@ -63,8 +89,8 @@ export function riskOf(scan: ModuleScan): string[] {
   const calls = isStrings(scan.uses?.calls) ? scan.uses.calls : []
   const events = isStrings(scan.uses?.events) ? scan.uses.events : []
   return [
-    ...calls.filter(c => c in RISKY_CALLS).map(c => `${c} (${RISKY_CALLS[c]})`),
-    ...events.filter(ev => ev in RISKY_EVENTS).map(ev => `on ${ev} (${RISKY_EVENTS[ev]})`),
+    ...calls.filter(c => Object.hasOwn(RISKY_CALLS, c)).map(c => `${c} (${RISKY_CALLS[c]})`),
+    ...events.flatMap(ev => riskyEventsOf(ev).map(name => `on ${ev === name ? ev : `${ev} → ${name}`} (${RISKY_EVENTS[name]})`)),
   ]
 }
 
