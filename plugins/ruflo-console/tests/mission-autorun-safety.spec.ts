@@ -158,7 +158,7 @@ describe('only the person restarts the hand-out count, and a slow store cannot g
     let settle: (value: unknown) => void = () => undefined
     const run = w.host.run
 
-    w.host.run = (argv: readonly string[]) => (argv.includes('task_update') ? new Promise(resolve => (settle = resolve)) : run(argv)) as never
+    w.host.run = ((...args: Parameters<typeof run>) => (args[0].includes('task_update') ? new Promise(resolve => (settle = resolve)) : run(...args))) as never
     await cycle(w, 5)
     expect(w.calls.prompts).toHaveLength(0)
     expect(types(w.mission).filter(type => type === 'task.dispatch_started')).toHaveLength(1)
