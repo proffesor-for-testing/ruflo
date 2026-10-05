@@ -4,6 +4,7 @@
  * cost. `codex exec --json` and `claude -p --output-format stream-json` each have their own events; anything not
  * named here is skipped. Every string is the agent's and is drawn as data.
  */
+import { countOf, finiteIn, usdOf } from './data/bounds'
 import type { TermLine } from './state'
 
 export type Sink = {
@@ -16,7 +17,6 @@ export type Sink = {
 
 const rec = (value: unknown): Record<string, unknown> | null => (value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null)
 const str = (value: unknown): string | undefined => (typeof value === 'string' && value !== '' ? value : undefined)
-const num = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? value : undefined)
 const clip = (text: string, max: number): string => {
   const one = text.replace(/\s+/g, ' ').trim()
 
@@ -74,7 +74,8 @@ export function codexEvent(event: Record<string, unknown>, sink: Sink): void {
           if (str(item.text) !== undefined) sink.line('sys', `thinking: ${clip(item.text as string, 140)}`)
           break
         case 'command_execution': {
-          const code = num(item.exit_code)
+          // An exit status is a 32-bit integer; anything past that is not one a process returned.
+          const code = finiteIn(item.exit_code, -2_147_483_648, 2_147_483_647)
           const output = (str(item.aggregated_output) ?? '').split('\n').filter(line => line.trim() !== '')
 
           for (const line of output.slice(-4)) sink.line('tool', `  ${line}`)
@@ -109,7 +110,7 @@ export function codexEvent(event: Record<string, unknown>, sink: Sink): void {
       return
     case 'turn.completed': {
       const usage = rec(event.usage)
-      const tokens = (num(usage?.input_tokens) ?? 0) + (num(usage?.output_tokens) ?? 0)
+      const tokens = Math.min((countOf(usage?.input_tokens) ?? 0) + (countOf(usage?.output_tokens) ?? 0), Number.MAX_SAFE_INTEGER)
 
       sink.done(tokens > 0 ? { tokens } : {})
 
@@ -178,7 +179,7 @@ export function claudeParser(): (event: Record<string, unknown>, sink: Sink) => 
         return
       }
       case 'result': {
-        const cost = num(event.total_cost_usd)
+        const cost = usdOf(event.total_cost_usd)
 
         sink.done({
           ...(cost !== undefined && { costUsd: cost }),

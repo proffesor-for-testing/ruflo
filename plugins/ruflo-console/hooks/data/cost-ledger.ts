@@ -4,8 +4,9 @@
  * spend, cache hit ratio and optimisation findings. Local only: nothing here reaches the network, and the script path
  * comes from `installed_plugins.json`, validated, never from typed text. USD and Codex credits are never added together.
  */
+import { countOf, finiteIn, ratioOf, usdOf } from './bounds'
 import { jsonAfter, type Probe } from './cli'
-import { numberOf, plain, recordOf, stringOf } from './parse'
+import { plain, recordOf, stringOf } from './parse'
 
 import type { State } from '../state'
 
@@ -26,10 +27,13 @@ export type Ledger = {
   findings: Finding[]
 }
 
+/** Codex credits: fractional, never negative, and past a trillion not a ledger's figure. */
+const creditsOf = (value: unknown): number | undefined => finiteIn(value, 0, 1e12)
+
 const moneyOf = (value: unknown): Money => {
   const record = recordOf(value)
-  const usd = numberOf(record?.usd)
-  const credits = numberOf(record?.credits)
+  const usd = usdOf(record?.usd)
+  const credits = creditsOf(record?.credits)
 
   return { ...(usd !== undefined && { usd }), ...(credits !== undefined && { credits }) }
 }
@@ -60,12 +64,12 @@ export function parseLedger(stdout: string): Ledger | null {
     since: stringOf(value.since, 12) ?? '7d',
     priceDate: stringOf(value.priceDate, 12) ?? 'unknown',
     totals: moneyOf(totals),
-    providers: Object.entries(byProvider).slice(0, 8).map(([name, cost]) => ({ name: plain(name, 20), cost: moneyOf(cost), hitRatio: numberOf(recordOf(cache[name])?.hitRatio) ?? null })),
+    providers: Object.entries(byProvider).slice(0, 8).map(([name, cost]) => ({ name: plain(name, 20), cost: moneyOf(cost), hitRatio: ratioOf(recordOf(cache[name])?.hitRatio) ?? null })),
     models: Object.entries(byModel).slice(0, 40).map(([key, cost]) => {
       const [provider = '', model = ''] = key.split('|')
       const t = recordOf(tokens[key])
 
-      return { provider: plain(provider, 20), model: plain(model, 50), cost: moneyOf(cost), messages: numberOf(t?.messages) ?? 0, output: numberOf(t?.output) ?? 0 }
+      return { provider: plain(provider, 20), model: plain(model, 50), cost: moneyOf(cost), messages: countOf(t?.messages) ?? 0, output: countOf(t?.output) ?? 0 }
     }),
     days: Object.entries(byDay).sort(([a], [b]) => a.localeCompare(b)).slice(-14).map(([day, cost]) => ({ day: plain(day, 10), usd: moneyOf(cost).usd ?? 0 })),
     unpriced: Object.keys(unpriced).slice(0, 10).map(name => plain(name, 50)),
@@ -74,7 +78,7 @@ export function parseLedger(stdout: string): Ledger | null {
       const finding = recordOf(item)
       const title = stringOf(finding?.title, 140)
 
-      return finding === null || title === undefined ? [] : [{ id: stringOf(finding.id, 40) ?? 'finding', title, evidence: stringOf(finding.evidence, 300) ?? '', action: stringOf(finding.action, 300) ?? '', saving: numberOf(finding.saving) ?? null, unit: finding.unit === 'usd' || finding.unit === 'credits' ? finding.unit : null }]
+      return finding === null || title === undefined ? [] : [{ id: stringOf(finding.id, 40) ?? 'finding', title, evidence: stringOf(finding.evidence, 300) ?? '', action: stringOf(finding.action, 300) ?? '', saving: (finding.unit === 'usd' ? usdOf(finding.saving) : creditsOf(finding.saving)) ?? null, unit: finding.unit === 'usd' || finding.unit === 'credits' ? finding.unit : null }]
     }),
   }
 }

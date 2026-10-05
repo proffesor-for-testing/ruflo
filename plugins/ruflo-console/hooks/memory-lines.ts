@@ -4,7 +4,7 @@
  * reads JSON. The CLI's own warnings that change the meaning of an answer (a second store it did not read, a key not
  * found) are kept, first. And the recency binning the view draws as a timeline. Pure: strings in, strings out.
  */
-import { countOf, isoOf } from './data/bounds'
+import { countOf, finiteIn, isoOf, shownOf } from './data/bounds'
 import { jsonAfter } from './data/cli'
 import { msOf, plain, recordOf } from './data/parse'
 import { labLines } from './mh-lab'
@@ -57,8 +57,9 @@ export function wrap(text: string, width = WRAP): string[] {
   return out
 }
 
-const short = (value: unknown, max: number): string => (typeof value === 'string' ? plain(value, max) : typeof value === 'number' || typeof value === 'boolean' ? String(value) : '')
-const score = (value: unknown): string => (typeof value === 'number' && Number.isFinite(value) ? value.toFixed(3) : '  n/a')
+/** A field as text: a string capped, a boolean as written, a number bounded by shownOf (never an exponent or a long fraction). */
+const short = (value: unknown, max: number): string => (typeof value === 'string' ? plain(value, max) : typeof value === 'number' || typeof value === 'boolean' ? shownOf(value) : '')
+const score = (value: unknown): string => finiteIn(value, -1, 1e6)?.toFixed(3) ?? '  n/a'
 
 /** One stored entry: its name, its size and access count, then the whole value. */
 function entryLines(record: Record<string, unknown>): string[] {
@@ -120,7 +121,8 @@ function vectorLines(record: Record<string, unknown>): string[] | null {
 
   if (vector === null) return null
 
-  const numbers = vector.filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+  // An embedding component is a small float: past a million the norm would overflow to Infinity and the head draw in exponents.
+  const numbers = vector.filter((value): value is number => finiteIn(value, -1e6, 1e6) !== undefined)
   const norm = Math.sqrt(numbers.reduce((sum, value) => sum + value * value, 0))
 
   return [`${numbers.length} dimensions · norm ${norm.toFixed(3)}${record.model !== undefined ? ` · ${short(record.model, 40)}` : ''}`, `head: ${numbers.slice(0, 8).map(value => value.toFixed(4)).join(' ')} …`]

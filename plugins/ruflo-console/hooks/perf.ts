@@ -7,6 +7,7 @@
  * The latency samples each run reports are kept per State here for the view's sparklines. Pure: no `$`.
  */
 import { exec } from './actions'
+import { finiteIn, shownOf } from './data/bounds'
 import { jsonAfter } from './data/cli'
 import { plain, recordOf } from './data/parse'
 import { labLines } from './mh-lab'
@@ -47,8 +48,13 @@ export function sparkline(values: readonly number[], width = 32): string {
   return shown.map(value => BARS[span === 0 ? 3 : Math.round(((value - lo) / span) * (BARS.length - 1))] ?? '▁').join('')
 }
 
-const ms = (value: unknown, digits = 3): string => (typeof value === 'number' && Number.isFinite(value) ? `${value.toFixed(digits)}ms` : 'n/a')
-const mb = (bytes: unknown): string => (typeof bytes === 'number' && Number.isFinite(bytes) ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : 'n/a')
+/** A latency the CLI measured: 0 to a day in ms; anything else is not a sample. */
+const msIn = (value: unknown): number | undefined => finiteIn(value, 0, 86_400_000)
+/** A byte count the CLI measured: 0 to a petabyte. */
+const bytesIn = (value: unknown): number | undefined => finiteIn(value, 0, 1e15)
+const ms = (value: unknown, digits = 3): string => (msIn(value) === undefined ? 'n/a' : `${(value as number).toFixed(digits)}ms`)
+const mb = (bytes: unknown): string => (bytesIn(bytes) === undefined ? 'n/a' : `${((bytes as number) / 1024 / 1024).toFixed(1)} MB`)
+const share = (value: unknown, max: number, digits: number): string => (finiteIn(value, 0, max) === undefined ? 'n/a' : `${(value as number).toFixed(digits)}%`)
 
 /** `performance metrics --format json`: memory, CPU, load and the event-loop latency, which feeds the sparkline. */
 export const metricsReader: Reader = (stdout, stderr, state) => {
@@ -60,19 +66,19 @@ export const metricsReader: Reader = (stdout, stderr, state) => {
   const cpu = recordOf(record.cpu) ?? {}
   const latency = recordOf(record.latency) ?? {}
   const cache = recordOf(record.cache) ?? {}
-  const avg = typeof latency.avgMs === 'number' && Number.isFinite(latency.avgMs) ? latency.avgMs : null
+  const avg = msIn(latency.avgMs) ?? null
   const memo = perfMemo(state)
 
   if (avg !== null) memo.loop = [...memo.loop, avg].slice(-KEEP)
-  memo.heapMb = typeof memory.heapUsed === 'number' ? memory.heapUsed / 1024 / 1024 : null
+  memo.heapMb = bytesIn(memory.heapUsed) === undefined ? null : (memory.heapUsed as number) / 1024 / 1024
   memo.atMs = Date.now()
 
-  const load = Array.isArray(cpu.loadAverage) ? cpu.loadAverage.filter(value => typeof value === 'number').map(value => value.toFixed(2)).join(' ') : 'n/a'
+  const load = Array.isArray(cpu.loadAverage) ? cpu.loadAverage.flatMap(value => (finiteIn(value, 0, 1e6) === undefined ? [] : [(value as number).toFixed(2)])).join(' ') : 'n/a'
 
   return [
     `event-loop latency ${ms(avg)} · heap ${mb(memory.heapUsed)} of ${mb(memory.heapTotal)} · rss ${mb(memory.rss)}`,
-    `system memory ${typeof memory.systemPercent === 'number' ? `${memory.systemPercent}%` : 'n/a'} · load ${load}`,
-    `embedding cache ~${String(cache.entries ?? 'n/a')} entries · HNSW ${String(cache.hnswEntries ?? 'n/a')} entries`,
+    `system memory ${share(memory.systemPercent, 100, 0)} · load ${load}`,
+    `embedding cache ~${shownOf(cache.entries)} entries · HNSW ${shownOf(cache.hnswEntries)} entries`,
     'measured in the CLI process at the moment it ran: one sample per run',
   ]
 }
@@ -85,8 +91,8 @@ export const benchReader: Reader = (stdout, stderr) => {
   if (record === null || results === undefined) return textLines(stdout, stderr)
 
   return [
-    `suite ${plain(String(record.suite ?? 'n/a'), 12)} · ${String(record.iterations ?? 'n/a')} iterations · ${plain(String(record.totalTime ?? 'n/a'), 12)}`,
-    ...results.map(row => `${plain(String(row.operation ?? ''), 24).padEnd(24)} mean ${plain(String(row.mean ?? ''), 12)} · p95 ${plain(String(row.p95 ?? ''), 12)} · p99 ${plain(String(row.p99 ?? ''), 12)} · ${plain(String(row.improvement ?? ''), 24)}`),
+    `suite ${plain(String(record.suite ?? 'n/a'), 12)} · ${shownOf(record.iterations)} iterations · ${plain(shownOf(record.totalTime), 12)}`,
+    ...results.map(row => `${plain(String(row.operation ?? ''), 24).padEnd(24)} mean ${plain(shownOf(row.mean, ''), 12)} · p95 ${plain(shownOf(row.p95, ''), 12)} · p99 ${plain(shownOf(row.p99, ''), 12)} · ${plain(shownOf(row.improvement, ''), 24)}`),
   ]
 }
 
@@ -100,7 +106,7 @@ export const reportReader: Reader = (stdout, stderr, state) => {
   const history = (Array.isArray(result.history) ? result.history : []).map(recordOf).flatMap(row => {
     const avg = recordOf(row?.latency)?.avg
 
-    return typeof avg === 'number' && Number.isFinite(avg) ? [avg] : []
+    return msIn(avg) === undefined ? [] : [avg as number]
   })
   const memo = perfMemo(state)
   const cpu = recordOf(current.cpu) ?? {}
@@ -111,7 +117,7 @@ export const reportReader: Reader = (stdout, stderr, state) => {
   memo.atMs = Date.now()
 
   return [
-    `cpu ${typeof cpu.usage === 'number' ? `${cpu.usage.toFixed(1)}%` : 'n/a'} of ${String(cpu.cores ?? 'n/a')} cores · memory ${String(memory.used ?? 'n/a')} of ${String(memory.total ?? 'n/a')} MB · heap ${String(memory.heap ?? 'n/a')} MB`,
+    `cpu ${share(cpu.usage, 100_000, 1)} of ${shownOf(cpu.cores)} cores · memory ${shownOf(memory.used)} of ${shownOf(memory.total)} MB · heap ${shownOf(memory.heap)} MB`,
     `latency avg ${ms(latency.avg)} · p50 ${ms(latency.p50)} · p95 ${ms(latency.p95)} · p99 ${ms(latency.p99)}`,
     `history: ${history.length} stored sample${history.length === 1 ? '' : 's'} in .claude-flow/performance/metrics.json`,
     ...labLines('performance_report', JSON.stringify({ trends: result.trends, recommendations: result.recommendations })).slice(0, 12),

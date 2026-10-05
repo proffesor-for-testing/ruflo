@@ -7,6 +7,7 @@
  * view shows its command and the person runs it. Pure: entries and parsers only, no `$`.
  */
 import { exec, type ActionSpec } from './actions'
+import { countOf, shownOf, usdOf } from './data/bounds'
 import { jsonAfter, type AuditTrend } from './data/cli'
 import { idOf, plain, recordOf } from './data/parse'
 import type { State } from './state'
@@ -112,7 +113,10 @@ export const LAB_MAX_LINES = 40
 const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info'] as const
 const SKIP = new Set(['rawStdout', 'stdout', 'durationMs', 'generatedAt', 'schema', 'system'])
 
-const scalar = (value: unknown): string | null => (value === null ? 'null' : typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? plain(String(value), 120) : null)
+const scalar = (value: unknown): string | null => (value === null ? 'null' : typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? plain(shownOf(value), 120) : null)
+
+/** A count a lab report printed: `missing` when absent, a whole non-negative number when it is one, else n/a (never -1 or 1e+308). */
+const tally = (value: unknown, missing = 'n/a'): string => (value === undefined || value === null ? missing : String(countOf(value) ?? 'n/a'))
 
 /** Any JSON as readable lines: scalars as `key: value`, short lists inline, objects indented, two levels deep. */
 function flatten(value: unknown, out: string[], depth = 0): void {
@@ -159,7 +163,7 @@ function findingLines(record: Record<string, unknown>, findings: unknown[]): str
   const flags = ['secretsReachable', 'networkAccess', 'shellAccess', 'fileWrite', 'policyDefaultDeny', 'auditLog'].filter(flag => typeof record[flag] === 'boolean')
 
   if (flags.length > 0) out.push(flags.map(flag => `${flag} ${record[flag] === true ? 'yes' : 'no'}`).join(' · '))
-  if (typeof record.allowedTools === 'number') out.push(`tools allowed ${record.allowedTools} · denied ${String(record.deniedTools ?? 'n/a')}`)
+  if (typeof record.allowedTools === 'number') out.push(`tools allowed ${tally(record.allowedTools)} · denied ${tally(record.deniedTools)}`)
 
   return out
 }
@@ -167,8 +171,8 @@ function findingLines(record: Record<string, unknown>, findings: unknown[]): str
 /** A redblue run: tests, failures by severity, cost, the gates, then each compromised case. */
 function redblueLines(record: Record<string, unknown>, summary: Record<string, unknown>): string[] {
   const out = [
-    `tests ${String(summary.tests_run ?? 'n/a')} · failures ${String(summary.failures_found ?? 'n/a')} · critical ${String(summary.critical ?? 0)} · high ${String(summary.high ?? 0)} · med ${String(summary.med ?? 0)} · low ${String(summary.low ?? 0)}`,
-    `cost $${typeof summary.cost_usd === 'number' ? summary.cost_usd.toFixed(3) : 'n/a'} · gates ${record.gates_passed === true ? 'passed' : 'FAILED'} · block production ${record.should_block_production === true ? 'yes' : 'no'}`,
+    `tests ${tally(summary.tests_run)} · failures ${tally(summary.failures_found)} · critical ${tally(summary.critical, '0')} · high ${tally(summary.high, '0')} · med ${tally(summary.med, '0')} · low ${tally(summary.low, '0')}`,
+    `cost $${usdOf(summary.cost_usd)?.toFixed(3) ?? 'n/a'} · gates ${record.gates_passed === true ? 'passed' : 'FAILED'} · block production ${record.should_block_production === true ? 'yes' : 'no'}`,
   ]
 
   for (const finding of (Array.isArray(record.findings) ? record.findings : []).map(recordOf)) {
@@ -209,7 +213,7 @@ function summary(value: unknown): string[] {
   }
 
   if (typeof record.system === 'string') {
-    return [`${String(record.chars ?? record.system.length)} chars from ${plain(String(record.source ?? 'the genome'), 200).split('/').pop() ?? ''}`, ...record.system.split('\n').map(line => plain(line, 160))]
+    return [`${countOf(record.chars) ?? record.system.length} chars from ${plain(String(record.source ?? 'the genome'), 200).split('/').pop() ?? ''}`, ...record.system.split('\n').map(line => plain(line, 160))]
   }
 
   const genome = recordOf(record.genome)

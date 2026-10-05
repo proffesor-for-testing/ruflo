@@ -6,7 +6,7 @@
  *
  * Config values are masked as they are parsed, so a secret never reaches the state, the result panel or a log line.
  */
-import { countOf } from './bounds'
+import { countOf, finiteIn } from './bounds'
 import { closeOf } from './json-span'
 import { idOf, msOf, plain, recordOf, stringOf } from './parse'
 
@@ -238,21 +238,22 @@ export function tableRows(stdout: string): [string, string][] {
 /** What `neural train` printed, as one run: its loss from Final Loss (native backend) or Avg Loss (JS fallback). */
 export function parseTrain(stdout: string, atMs: number): TrainRun | null {
   const table = new Map(tableRows(stdout))
-  const epochs = Number(table.get('Epochs'))
+  const epochs = countOf(Number(table.get('Epochs')))
   const pattern = table.get('Pattern Type')
 
-  if (pattern === undefined || !Number.isFinite(epochs)) return null
+  if (pattern === undefined || epochs === undefined) return null
 
-  const loss = Number(table.get('Final Loss') ?? table.get('Avg Loss'))
-  const seconds = Number.parseFloat(table.get('Total Time') ?? '')
+  // What the CLI printed, held to what a run can report: a loss within ±1e6, a time within a week; anything else is left out.
+  const loss = finiteIn(Number(table.get('Final Loss') ?? table.get('Avg Loss')), -1e6, 1e6)
+  const seconds = finiteIn(Number.parseFloat(table.get('Total Time') ?? ''), 0, 604_800)
   const backend = table.get('Backend')
 
   return {
     pattern: plain(pattern, 20),
     epochs,
     atMs,
-    ...(Number.isFinite(loss) && { loss }),
-    ...(Number.isFinite(seconds) && { seconds }),
+    ...(loss !== undefined && { loss }),
+    ...(seconds !== undefined && { seconds }),
     ...(backend !== undefined && backend !== '' && { backend: backend.split(' ')[0] }),
   }
 }

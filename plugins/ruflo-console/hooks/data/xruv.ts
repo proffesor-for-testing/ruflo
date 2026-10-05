@@ -4,6 +4,7 @@
  * the board's ▸ fetch (the click is the consent). What they return is third parties' text, wrapped by the gateway in
  * its provenance envelope: every string is capped and stripped of control characters, and drawn as data.
  */
+import { dateMsOf } from './bounds'
 import { jsonAfter, type Probe } from './cli'
 import { msOf, numberOf, plain, recordOf, stringOf } from './parse'
 
@@ -75,7 +76,7 @@ export function messageOf(entry: unknown): SwarmMessage | null {
 
   const said = SAYS.map(key => stringOf(body[key], 140)).find(value => value !== undefined)
   const seconds = numberOf(body.created_at)
-  const atMs = seconds !== undefined ? seconds * 1000 : msOf(body.ts)
+  const atMs = seconds !== undefined ? dateMsOf(seconds * 1000) : msOf(body.ts)
 
   return { type: stringOf(body.type, 24) ?? 'message', from, ...(said !== undefined && { text: said }), ...(atMs !== undefined && { atMs }) }
 }

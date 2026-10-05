@@ -4,7 +4,7 @@
  * when the person turns `federationNetwork` on. `plugins list` is never run (it fetches the IPFS registry), nor `verify` (it
  * fetches a manifest from GitHub).
  */
-import { countOf, ratioOf } from './bounds'
+import { countOf, ratioOf, usdOf } from './bounds'
 import { closeOf } from './json-span'
 import { idOf, msOf, numberOf, plain, recordOf, stringOf, valuesOf } from './parse'
 import { researchProbe } from './research'
@@ -118,12 +118,12 @@ export const memoryProbe: Probe<MemoryStats> = {
 
     const entries = recordOf(value.entries)
     const stats: MemoryStats = { backend: stringOf(value.backend, 60) ?? 'unknown' }
-    const total = numberOf(entries?.total)
-    const vectors = numberOf(entries?.vectors)
+    const total = countOf(entries?.total)
+    const vectors = countOf(entries?.vectors)
     const storage = stringOf(recordOf(value.storage)?.total, 30)
     const oldestMs = msOf(value.oldestEntry)
     const newestMs = msOf(value.newestEntry)
-    const unread = numberOf(recordOf(value.unreadStore)?.rows)
+    const unread = countOf(recordOf(value.unreadStore)?.rows)
 
     if (total !== undefined) stats.total = total
     if (unread !== undefined) stats.unread = unread
@@ -162,7 +162,7 @@ export const namespacesProbe: Probe<Namespaces> = {
       const record = recordOf(entry)
       const name = stringOf(record?.namespace, 40) ?? '(none)'
       const key = stringOf(record?.key, 128)
-      const size = numberOf(record?.size)
+      const size = countOf(record?.size)
       const atMs = msOf(record?.updatedAt ?? record?.createdAt)
 
       counts.set(name, (counts.get(name) ?? 0) + 1)
@@ -190,7 +190,7 @@ export const scoreProbe: Probe<HarnessScore> = {
     const dims = DIMS.flatMap(name => {
       const score = numberOf(value?.[name])
 
-      return score === undefined ? [] : [{ name, value: Math.max(0, Math.min(100, score)) }]
+      return score === undefined ? [] : [{ name, value: Math.round(Math.max(0, Math.min(100, score))) }]
     })
 
     if (value === null || dims.length === 0) {
@@ -198,7 +198,7 @@ export const scoreProbe: Probe<HarnessScore> = {
     }
 
     const score: HarnessScore = { dims }
-    const costUsd = numberOf(value.estCostPerRunUsd)
+    const costUsd = usdOf(value.estCostPerRunUsd)
     const archetype = stringOf(value.archetype, 40)
     const constraints = stringOf(value.hardConstraints, 10)
     const atMs = msOf(value.generatedAt)
@@ -232,12 +232,12 @@ export const flywheelProbe: Probe<Flywheel> = {
 
     const flywheel: Flywheel = {
       isLedgerValid: ledger.valid === true,
-      commits: numberOf(ledger.commits) ?? 0,
+      commits: countOf(ledger.commits) ?? 0,
       receipts: Object.keys(recordOf(state?.receiptStates) ?? {}).length,
       errors: (Array.isArray(ledger.errors) ? ledger.errors : []).slice(0, 3).map(error => plain(error, 100)),
     }
     const champion = stringOf(state?.activeChampionRef, 80)
-    const epoch = numberOf(state?.servingEpoch)
+    const epoch = countOf(state?.servingEpoch)
 
     if (champion !== undefined) flywheel.champion = champion
     if (epoch !== undefined) flywheel.epoch = epoch
@@ -271,7 +271,7 @@ export const auditProbe: Probe<AuditTrend> = {
       const record = recordOf(entry)
       const atMs = msOf(record?.finishedAt ?? record?.startedAt ?? record?.timestamp ?? record?.generatedAt ?? record?.createdAt ?? recordOf(record?.value)?.generatedAt)
       const worst = stringOf(record?.worst ?? recordOf(record?.value)?.worst, 12)
-      const findings = numberOf(record?.findings ?? recordOf(record?.value)?.findingCount)
+      const findings = countOf(record?.findings ?? recordOf(record?.value)?.findingCount)
       const key = idOf(record?.key) ?? undefined
 
       return atMs === undefined ? [] : [{ atMs, ...(worst !== undefined && { worst }), ...(findings !== undefined && { findings }), ...(key !== undefined && { key }) }]
@@ -279,7 +279,7 @@ export const auditProbe: Probe<AuditTrend> = {
 
     points.sort((a, b) => a.atMs - b.atMs)
 
-    return { total: numberOf(value.totalInNamespace) ?? points.length, points }
+    return { total: countOf(value.totalInNamespace) ?? points.length, points }
   },
 }
 
@@ -450,7 +450,7 @@ export const registryProbe: Probe<Registry> = {
 
     const reg = recordOf(value.registration)
     const limits = recordOf(reg?.limits)
-    const limitText = limits === null ? undefined : Object.entries(limits).slice(0, 4).flatMap(([key, n]) => (numberOf(n) === undefined ? [] : [`${plain(key, 16)} ${numberOf(n)}`])).join(' · ')
+    const limitText = limits === null ? undefined : Object.entries(limits).slice(0, 4).flatMap(([key, n]) => (countOf(n) === undefined ? [] : [`${plain(key, 16)} ${countOf(n)}`])).join(' · ')
     const out: Registry = {
       join: (Array.isArray(value.join) ? value.join : []).slice(0, 6).flatMap(step => (typeof step === 'string' ? [plain(step, 200)] : [])),
       channels: (Array.isArray(value.defaultChannels) ? value.defaultChannels : []).slice(0, 8).flatMap(entry => {

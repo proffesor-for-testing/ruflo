@@ -4,7 +4,7 @@
  * every string cleaned. A value a file does not hold is absent, and the view says n/a.
  */
 import { countOf, ratioOf } from './bounds'
-import { jsonObject, msOf, numberOf, plain, recordOf, stringOf } from './parse'
+import { jsonObject, msOf, plain, recordOf, stringOf } from './parse'
 
 export type NeuralStats = { trajectories?: number; patterns?: number; signals?: number; lastAdaptationMs?: number }
 
@@ -79,7 +79,7 @@ export function parseOutcomes(text: string | null): Outcomes | null {
       return []
     }
 
-    const quality = numberOf(row.quality)
+    const quality = ratioOf(row.quality)
 
     return [{ ok: row.success, agent: stringOf(row.agent, 30) ?? '?', atMs, ...(quality !== undefined && { quality }) }]
   })

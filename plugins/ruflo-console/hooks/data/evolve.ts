@@ -16,9 +16,10 @@
  * Same rules as ./parse: any shape tolerated, nothing guessed, every string cleaned. `.claude-flow/policy/state.json` is
  * never read (it reaches tens of MB); the policy ledger is asked of `ruflo policy status` when the person clicks.
  */
+import { countOf, finiteIn } from './bounds'
 import { jsonAfter } from './cli'
 import { readBounded, under, type ReadCache, type ReaderFs } from './files'
-import { jsonObject, msOf, numberOf, plain, recordOf, stringOf } from './parse'
+import { jsonObject, msOf, plain, recordOf, stringOf } from './parse'
 
 export const EVOLVE_FILES = {
   flywheel: '.claude-flow/flywheel-v1/transaction-state.json',
@@ -111,7 +112,7 @@ export function parseFlywheel(text: string | null): FlywheelFile | null {
 
     const baseline = refOf(commit.baselineRef)
     const receipt = refOf(commit.receiptId)
-    const epoch = numberOf(commit.servingEpoch)
+    const epoch = countOf(commit.servingEpoch)
     const atMs = msOf(commit.promotedAt)
     const proposer = stringOf(commit.proposer, 20)
 
@@ -119,7 +120,7 @@ export function parseFlywheel(text: string | null): FlywheelFile | null {
   })
   const champion = refOf(value.activeChampionRef)
   const served = refOf(value.servedChampionRef)
-  const epoch = numberOf(value.servingEpoch)
+  const epoch = countOf(value.servingEpoch)
   const head = refOf(value.ledgerHead)
 
   return { statuses, commits, ...(champion !== undefined && { champion }), ...(served !== undefined && { served }), ...(epoch !== undefined && { epoch }), ...(head !== undefined && { head }) }
@@ -137,7 +138,8 @@ export function parseReceipt(text: string | null): Receipt | null {
   const candidate = refOf(payload.candidateId)
   const baseline = refOf(payload.baselineRef)
   const atMs = msOf(payload.issuedAt)
-  const lift = numberOf(recordOf(payload.statistics)?.relativeLift)
+  // A relative lift is a share of the baseline: never below -100%, and past 1000x it is not a measurement.
+  const lift = finiteIn(recordOf(payload.statistics)?.relativeLift, -1, 1_000)
   const signature = recordOf(value.signature)
 
   return {
@@ -153,7 +155,7 @@ export function parseReceipt(text: string | null): Receipt | null {
 
 export function parseGeneration(text: string | null): Generation | null {
   const value = jsonObject(text)
-  const generation = numberOf(value?.generation)
+  const generation = countOf(value?.generation)
 
   if (value === null || generation === undefined) return null
 
@@ -183,7 +185,7 @@ export function parseServed(text: string | null): Served | null {
   if (value === null) return null
 
   const champion = refOf(value.championHash)
-  const fromGeneration = numberOf(value.fromGeneration)
+  const fromGeneration = countOf(value.fromGeneration)
   const atMs = msOf(value.servedAt)
 
   return { ...(champion !== undefined && { champion }), ...(fromGeneration !== undefined && { fromGeneration }), ...(atMs !== undefined && { atMs }) }
@@ -215,7 +217,7 @@ export function parseManifest(text: string | null, os: Os): Manifest | null {
   const issuedAtMs = msOf(manifest.issuedAt)
   const gitCommit = stringOf(manifest.gitCommit, 12)
   const branch = stringOf(manifest.branch, 40)
-  const fixes = numberOf(recordOf(manifest.summary)?.totalFixes) ?? (Array.isArray(manifest.fixes) ? manifest.fixes.length : undefined)
+  const fixes = countOf(recordOf(manifest.summary)?.totalFixes) ?? (Array.isArray(manifest.fixes) ? manifest.fixes.length : undefined)
 
   return {
     os,
@@ -271,7 +273,7 @@ export async function readEvolve(fs: ReaderFs, cache: ReadCache, cwd: string, no
   }
 }
 
-const count = (value: unknown): number => numberOf(value) ?? 0
+const count = (value: unknown): number => countOf(value) ?? 0
 
 /** `metaharness flywheel status`: `{state, ledger: {valid, errors, commits, head}}`, its ledger as checked. */
 export function parseLedger(stdout: string, atMs: number): Ledger | null {

@@ -7,6 +7,7 @@
  * checks, the text in the field) is kept per State in this module. Pure: entries, validators and parsers, no `$`.
  */
 import { exec, type ActionSpec } from './actions'
+import { finiteIn } from './data/bounds'
 import { jsonAfter } from './data/cli'
 import { plain, recordOf } from './data/parse'
 import { labLines } from './mh-lab'
@@ -173,7 +174,7 @@ export const compositionReader: Reader = (stdout, stderr) => {
 
   if (suspects === undefined) return textLines(stdout, stderr)
 
-  return [`${suspects.length} suspect${suspects.length === 1 ? '' : 's'} in the CLI's registered MCP tool descriptions`, ...suspects.slice(0, 25).map(row => `${plain(String(row.tool ?? ''), 32)} · ${typeof row.score === 'number' ? row.score.toFixed(2) : 'n/a'} · ${plain(String(row.reason ?? ''), 100)}`)]
+  return [`${suspects.length} suspect${suspects.length === 1 ? '' : 's'} in the CLI's registered MCP tool descriptions`, ...suspects.slice(0, 25).map(row => `${plain(String(row.tool ?? ''), 32)} · ${finiteIn(row.score, 0, 1_000)?.toFixed(2) ?? 'n/a'} · ${plain(String(row.reason ?? ''), 100)}`)]
 }
 
 /** Doctor's `✓|⚠|✗ Name: message` rows (colours stripped), its summary, and anything after them (suggested fixes). */

@@ -9,76 +9,20 @@ import { parseAutopilot, parseTemplates, parseWorkflows } from '../hooks/data/au
 import { countOf, dateMsOf, isoOf, MAX_DATE_MS, minorOf, ratioOf } from '../hooks/data/bounds'
 import { intelligenceProbe, type Intelligence } from '../hooks/data/cli'
 import { diffEvents } from '../hooks/data/events'
-import type { ReadCache, ReaderFs } from '../hooks/data/files'
 import { money, parseMissions } from '../hooks/data/missions'
 import { parseModStatus } from '../hooks/data/mods'
 import { msOf } from '../hooks/data/parse'
 import { roomFeed } from '../hooks/data/room'
-import { readSnapshot, type Snapshot } from '../hooks/data/snapshot'
+import type { Snapshot } from '../hooks/data/snapshot'
 import { lineageOf } from '../hooks/gfx/evolve'
 import { gauge, memLines } from '../hooks/memory-lines'
 import { mcOf } from '../hooks/mission-control'
 import { roomOf } from '../hooks/room'
 import { newState, VIEWS } from '../hooks/state'
-import { setLook, type Actions } from '../hooks/views/common'
+import { setLook } from '../hooks/views/common'
 import { viewText } from '../hooks/views/pane'
 import { xruvLines } from '../hooks/xruv'
-import { MISSION_OBSERVATION } from './fixtures/missions'
-import { RUFLO_FILES } from './fixtures/ruflo-run'
-
-const act: Actions = (() => {
-  const handler: ProxyHandler<() => void> = { get: (_t, key) => (key === 'then' ? undefined : proxy), apply: () => undefined }
-  const proxy: unknown = new Proxy(() => undefined, handler)
-  return proxy as Actions
-})()
-
-const memoryFs = (f: Record<string, string>): ReaderFs => ({
-  read: async path => f[path] ?? Promise.reject(new Error('ENOENT')),
-  stat: async path => (f[path] !== undefined ? { mtimeMs: 1, size: (f[path] as string).length, kind: 'file' } : Promise.reject(new Error('ENOENT'))),
-  list: async path => {
-    const prefix = `${path}/`
-    const names = new Set(Object.keys(f).filter(p => p.startsWith(prefix)).map(p => p.slice(prefix.length).split('/')[0] as string))
-
-    if (names.size === 0) throw new Error('ENOENT')
-
-    return [...names].map(name => ({ name, kind: Object.keys(f).some(p => p.startsWith(`${prefix}${name}/`)) ? 'directory' : 'file' }))
-  },
-})
-
-/** Keys that say which shape a file is: kept as written, so the reader takes the file and its numbers reach the screen. */
-const SHAPE_KEYS = new Set(['schemaVersion', 'version'])
-
-/** Every number in a JSON value replaced by `n`, except a schema version. */
-const numbers = (value: unknown, n: number): unknown =>
-  typeof value === 'number'
-    ? n
-    : Array.isArray(value)
-      ? value.map(v => numbers(v, n))
-      : value !== null && typeof value === 'object'
-        ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, SHAPE_KEYS.has(k) ? v : numbers(v, n)]))
-        : value
-
-/** The run fixture with every number in every JSON file set to `n` (schema versions kept, so every file is still read). */
-async function snapshotWith(n: number, only?: string): Promise<Snapshot> {
-  const base: Record<string, string> = { ...RUFLO_FILES, '.claude-flow/missions/observation.json': MISSION_OBSERVATION, '.claude-flow/evil-mod/status.json': JSON.stringify({ version: 1, guard: true, calls: 3, blocked: 1, updatedMs: 2, startedMs: 1 }) }
-  const files: Record<string, string> = {}
-
-  for (const [path, text] of Object.entries(base)) {
-    let out = text
-
-    if (only === undefined || path === only) {
-      try {
-        out = JSON.stringify(numbers(JSON.parse(text), n))
-      } catch {
-        // not JSON: kept as written
-      }
-    }
-
-    files[`/work/${path}`] = out
-  }
-
-  return readSnapshot(memoryFs(files), new Map() as ReadCache, '/work', '/home/dev', {}, 0)
-}
+import { act, snapshotWith, SWEEP } from './fixtures/hostile'
 
 const drawn = (f: () => unknown): string => {
   try {
@@ -151,9 +95,6 @@ describe('counts that are negative, huge or not whole', () => {
     expect(drawn(() => viewText({ state, nowMs: 5_000, columns: 120, act }, 'learning'))).toBe('drew')
   })
 
-  /** Exponent notation (1e+308, 1e-7), a minus before a digit that is not part of a date or an id (-1 runs, $-0.01), NaN, Infinity. */
-  const SWEEP = /\bNaN\b|Infinity|\bundefined\b|\de[+-]\d|(^|[\s/$(:])-\d|-\d+%/
-
   for (const n of [-1, 1e308, -1e308, 1e17, 0.0000001]) {
     it(`every number in every file set to ${n}: every view (Room with a mod open, Missions on its record tab) draws, and no NaN, Infinity, exponent or negative`, async () => {
       setLook('plain')
@@ -191,8 +132,8 @@ describe('counts that are negative, huge or not whole', () => {
   }
 
   it('the sweep pattern catches what the record tab drew before the fix', () => {
-    for (const bad of ['verified -1e+308/-1e+308', '$-1e+306 of $-1e+306', 'rev -1e+308', 'plan rev 1e+308: (+1e+308)', '$-0.01 of $-0.01', 'tasks 0+/1e-7', '-1 runs', '(-1)']) expect(SWEEP.test(bad), bad).toBe(true)
-    for (const good of ['2026-10-02 03:29', 'msn_a2852484056873a25a593d16', 'hive-worker-1790903400000-a1b2', 'rev 9007199254740991', '$10.00 of $10.00', 'sha256:f4f3e2e2']) expect(SWEEP.test(good), good).toBe(false)
+    for (const bad of ['verified -1e+308/-1e+308', '$-1e+306 of $-1e+306', 'rev -1e+308', 'plan rev 1e+308: (+1e+308)', '$-0.01 of $-0.01', 'tasks 0+/1e-7', '-1 runs', '(-1)', 'last 1e+308 ms', '◆ hello [mem -1.00]', '12.3456789 B']) expect(SWEEP.test(bad), bad).toBe(true)
+    for (const good of ['2026-10-02 03:29', 'msn_a2852484056873a25a593d16', 'hive-worker-1790903400000-a1b2', 'rev 9007199254740991', '$10.00 of $10.00', 'sha256:f4f3e2e2', 'ruflo v3.41.2', '$0.024 · 0.8421']) expect(SWEEP.test(good), good).toBe(false)
   })
 })
 

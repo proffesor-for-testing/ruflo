@@ -4,8 +4,9 @@
  * document. Local only: nothing here reaches the network, and the script path comes from `installed_plugins.json`,
  * validated, never from typed text. Read-only: the section stores and starts nothing.
  */
+import { usdOf } from './bounds'
 import type { Probe } from './cli'
-import { jsonObject, msOf, numberOf, recordOf, stringOf } from './parse'
+import { jsonObject, msOf, recordOf, stringOf } from './parse'
 
 import type { State } from '../state'
 
@@ -63,13 +64,13 @@ export function parseResearch(stdout: string): ResearchRecord[] | null {
     if (record === null || question === undefined) return []
 
     const findings = (Array.isArray(record.findings) ? record.findings : []).slice(0, MAX_FINDINGS)
-    const spent = numberOf(record.spentUsd)
-    const cap = numberOf(record.capUsd)
+    const spent = usdOf(record.spentUsd)
+    const cap = usdOf(record.capUsd)
     const status = typeof record.status === 'string' && STATUSES.includes(record.status) ? (record.status as ResearchRecord['status']) : 'unknown'
 
     return [{
       question, status, depth: stringOf(record.depth, 12) ?? 'n/a', findings: findings.length, grades: countGrades(findings),
-      spentUsd: spent !== undefined && spent >= 0 ? spent : null, capUsd: cap !== undefined && cap >= 0 ? cap : null,
+      spentUsd: spent ?? null, capUsd: cap ?? null,
       atMs: msOf(record.at) ?? null, isScreened: record.screened === true,
     }]
   })
