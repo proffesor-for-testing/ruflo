@@ -2,6 +2,8 @@ import { describe, expect, test, tier } from 'claude-code/testing'
 import type { Plugin } from 'claude-code/testing'
 
 import { HELPER, prompt, ROOT, START, world } from './fixtures/world'
+import { cachedFile, isMissing } from '../hooks/files'
+import { flushObservations, guidanceState } from '../hooks/guidance/observations'
 
 tier('user')
 
@@ -219,5 +221,25 @@ describe('register', () => {
     expect((await run('mods')).text).toContain('owns:        route, post-edit')
     expect((await run('claims')).text).toBe('beneath: claims')
     expect((await $.command.run({ command: 'ruflo-console', args: 'mods', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })).text).toBe(alias.text)
+  })
+})
+
+describe('missing means the read said ENOENT, not that some text did (#3793)', () => {
+  test('a quoted path containing ENOENT is not "missing"; a real ENOENT still is', async () => {
+    const path = '/home/u/ENOENT-repo/.claude-flow/policy/claude-code.json'
+    expect(isMissing(new Error(`EACCES: permission denied, open '${path}'`), path)).toBe(false)
+    expect(isMissing(new Error(`ENOENT: no such file or directory, open '${path}'`), path)).toBe(true)
+    const read = cachedFile(() => path, text => text)
+    const fs = { stat: async () => ({ kind: 'file', size: 1, mtimeMs: 1, isLink: false }) as never, read: async () => { throw new Error(`EACCES: permission denied, open '${path}'`) } }
+    expect((await read(fs)).kind).toBe('error')
+  })
+
+  test('a corrupt observation queue whose text quotes ENOENT is never overwritten', async () => {
+    const s = guidanceState()
+    s.runId = 'mod-a-b-c'
+    s.pending = [{ id: 'x' } as never]
+    const writes: string[] = []
+    await flushObservations(s, '/q.json', { read: async () => '[{"id": ENOENT', write: async (_p, t) => void writes.push(t) })
+    expect(writes).toEqual([])
   })
 })

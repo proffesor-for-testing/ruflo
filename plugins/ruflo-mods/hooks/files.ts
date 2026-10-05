@@ -23,7 +23,11 @@ export type Read<T> =
  * Anything else is an error: for the guard that means failing closed, so a
  * loosely matched message must never read as "no policy here".
  */
-export const isMissing = (error: unknown) => /\bENOENT\b/.test(String((error as Error)?.message ?? error))
+export const isMissing = (error: unknown, path?: string) => {
+  const message = String((error as Error)?.message ?? error)
+  // The path a message quotes is the caller's own word, not the error: a project under ".../ENOENT-x/" is not missing.
+  return /\bENOENT\b/.test(path ? message.split(path).join('') : message)
+}
 
 /**
  * A reader that parses a project file once per change: one `$.fs.stat` per
@@ -47,7 +51,7 @@ export function cachedFile<T>(pathOf: () => string, parse: (text: string) => T) 
       key = `${path}:${stat.size}:${stat.mtimeMs}`
     } catch (error) {
       seen = undefined
-      return isMissing(error) ? { kind: 'absent' } : { kind: 'error', message: String(error) }
+      return isMissing(error, path) ? { kind: 'absent' } : { kind: 'error', message: messageOf(error) }
     }
     if (seen?.key === key) return seen.read
 
@@ -69,7 +73,7 @@ async function readAndParse<T>(fs: FileHost, path: string, parse: (text: string)
   try {
     text = await fs.read(path)
   } catch (error) {
-    return isMissing(error) ? { kind: 'absent' } : { kind: 'error', message: messageOf(error) }
+    return isMissing(error, path) ? { kind: 'absent' } : { kind: 'error', message: messageOf(error) }
   }
   try {
     return { kind: 'ok', value: parse(text) }
