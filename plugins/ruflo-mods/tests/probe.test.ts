@@ -28,8 +28,21 @@ describe('capability probe, pure (ADR-451 item 5)', () => {
     expect(off).not.toContain('tool.describe')
     expect(off).toContain('tool.check')
     expect(registeredEvents({ toolHints: true, agentTrim: true, deliveryScreen: true, compactCarry: true })).toEqual(
-      [...off, 'tool.describe', 'agent.offer', 'session.receive', 'session.send', 'session.compact'].sort(),
+      [...off, 'tool.describe', 'agent.offer', 'agent.spawn', 'session.receive', 'session.send', 'session.compact'].sort(),
     )
+  })
+
+  test('events hooked only under an option are counted only under it', () => {
+    const base = { toolHints: false, agentTrim: false, deliveryScreen: false }
+    const off = registeredEvents(base)
+    for (const e of ['session.measure', 'agent.spawn']) expect(off).not.toContain(e)
+    expect(off).toContain('plugin.register')
+    expect(registeredEvents({ ...base, modTrust: 'off' })).not.toContain('plugin.register')
+    expect(registeredEvents({ ...base, costBudgetUsd: 5 })).toContain('session.measure')
+    expect(registeredEvents({ ...base, costBudgetUsd: 5 })).not.toContain('agent.spawn')
+    expect(registeredEvents({ ...base, costBudgetUsd: 5, costHardStop: true })).toContain('agent.spawn')
+    expect(registeredEvents({ ...base, costHardStop: true })).not.toContain('agent.spawn')
+    expect(registeredEvents({ ...base, sessionRollup: true })).toContain('agent.spawn')
   })
 })
 

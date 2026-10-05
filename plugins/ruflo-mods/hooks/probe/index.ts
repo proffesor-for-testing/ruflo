@@ -30,10 +30,17 @@ const MAX_LINE = 240
  * statically (it refuses a wrapped or aliased `on`), so the list is kept here
  * and a test fails when it drifts from the `on('<event>', ...)` calls in hooks/.
  */
-const ALWAYS = ['agent.spawn', 'command.run', 'engine.create', 'plugin.register', 'prompt.submit', 'session.end', 'session.measure', 'session.start', 'tool.call', 'tool.check', 'turn.complete'] as const
+const ALWAYS = ['command.run', 'engine.create', 'prompt.submit', 'session.end', 'session.start', 'tool.call', 'tool.check', 'turn.complete'] as const
 
-export function registeredEvents(opts: Pick<ModOptions, 'toolHints' | 'agentTrim' | 'deliveryScreen'> & Partial<Pick<ModOptions, 'compactCarry'>>): string[] {
+type EventOptions = Pick<ModOptions, 'toolHints' | 'agentTrim' | 'deliveryScreen'> &
+  Partial<Pick<ModOptions, 'compactCarry' | 'costBudgetUsd' | 'costHardStop' | 'sessionRollup' | 'modTrust'>>
+
+export function registeredEvents(opts: EventOptions): string[] {
   const names: string[] = [...ALWAYS]
+  // Registered only under these options, so "never fired" is not reported for an event the mod did not hook.
+  if (opts.modTrust !== 'off') names.push('plugin.register')
+  if (opts.costBudgetUsd !== undefined) names.push('session.measure')
+  if ((opts.costBudgetUsd !== undefined && opts.costHardStop) || opts.sessionRollup || opts.agentTrim) names.push('agent.spawn')
   if (opts.toolHints) names.push('tool.describe')
   if (opts.agentTrim) names.push('agent.offer')
   if (opts.deliveryScreen) names.push('session.receive', 'session.send')
