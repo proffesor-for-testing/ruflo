@@ -348,8 +348,8 @@ export type SettingsActions = {
   option: (name: string, key: string, value: string) => void
   core: (key: string, value: string) => void
   ai: (patch: Partial<AiPrefs>) => void
-  /** The confirm row's "always accept": saves the preference and runs the ask that is pending. */
-  alwaysAccept: () => void
+  /** The confirm row's "always accept": saves the preference and runs the ask that is pending, if it is still the card it was pressed on. */
+  alwaysAccept: (seen?: number) => void
   /** Sends an explaining prompt to the AI terminal (claude or codex) now: the reply streams in, no second click. */
   ask: (agent: 'claude' | 'codex', title: string, description: string, current: string, where: string) => void
 }
@@ -386,11 +386,11 @@ export function settingsActions(state: State, host: Host, runner: Runner, load: 
     option: (name, key, value) => runner.ask(setOption(state, name, key, value, reloadPlugin), `“${plain(value, 40)}” is not a value ${key} accepts`),
     core: (key, value) => runner.ask(setCore(state, key, value, reloadCore), `“${plain(value, 40)}” is not a value ${key} accepts`),
     ai: patch => saveAiPrefs(state, host, patch),
-    alwaysAccept: () => {
+    alwaysAccept: seen => {
       saveAiPrefs(state, host, { autoAccept: true })
       state.terminal.asked = null
       state.terminal.draft = ''
-      void runner.confirm()
+      void runner.confirm(seen)
     },
     ask: (agent, title, description, current, where) => load(agent, askPrompt(title, description, current, where)),
   }

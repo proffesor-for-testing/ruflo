@@ -12,7 +12,8 @@ import { newState, type State } from '../../hooks/state'
 
 export type Recorded = { runs: string[][]; slash: string[][]; prompts: string[] }
 
-export function liveConsole(level: 'read' | 'write' | 'manage' | 'full', confirm: 'ask' | 'auto' = 'ask') {
+/** `openPane` replaces the pane opener, so a test can hold `console_open` open while something else (a screened ask) lands. */
+export function liveConsole(level: 'read' | 'write' | 'manage' | 'full', confirm: 'ask' | 'auto' = 'ask', fakes: { openPane?: () => Promise<unknown> } = {}) {
   const log: Recorded = { runs: [], slash: [], prompts: [] }
   const host = new Proxy(
     {},
@@ -26,7 +27,7 @@ export function liveConsole(level: 'read' | 'write' | 'manage' | 'full', confirm
         if (key === 'submitPrompt') return async (text: string) => void log.prompts.push(text)
         if (key === 'fillPrompt') return async () => true
         if (key === 'storeGet') return async () => undefined
-        if (key === 'openPane') return async () => ({ isPlaced: true })
+        if (key === 'openPane') return async () => (await fakes.openPane?.(), { isPlaced: true })
         if (key === 'invalidate' || key === 'scrollTop' || key === 'blit' || key === 'toast') return () => undefined
 
         return () => Promise.resolve(undefined)

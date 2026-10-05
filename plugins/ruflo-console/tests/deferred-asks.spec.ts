@@ -107,3 +107,49 @@ describe('the person\'s waiting action is theirs (ADR-450 T17)', () => {
     expect(log.runs.filter(argv => argv.includes('two')).length).toBe(1)
   })
 })
+
+/**
+ * A screened ask can land while ANOTHER of Claude's tool calls is running: `viaModel` is true again then, but no `settlePending` of that
+ * call will meet the ask (console_open settles nothing). The ask is still late, and gated in the runner (#3815, #3820 review).
+ */
+describe('a screened ask that lands during another of Claude\'s calls is still gated', () => {
+  /** Runs `console_open overview` with its pane opener held until the screen has landed, then lets it finish. */
+  async function landDuringOpen(level: 'read' | 'full', lowerTo?: 'read') {
+    let release: () => void = () => undefined
+    const held = new Promise<void>(resolve => (release = resolve))
+    const live = liveConsole(level, 'ask', { openPane: () => held })
+
+    expect(await callTool('console_run', { id: 'ask', text: 'what next' }, live.deps)).not.toMatch(/^Refused/)
+    expect(live.state.pending).toBeNull()
+    if (lowerTo !== undefined) Object.assign(settingsOf(live.state).ai, { modelControl: lowerTo })
+
+    const opening = callTool('console_open', { view: 'overview' }, live.deps)
+
+    await flush()
+    // The screen answered while console_open was still waiting on the pane: Claude's call is running.
+    expect(live.state.control.viaModel).toBe(true)
+    release()
+    expect(await opening).toMatch(/^Opened/)
+
+    return live
+  }
+
+  it('level lowered to read mid-call: the ask is refused, nothing is queued or counted', async () => {
+    const { state, log } = await landDuringOpen('full', 'read')
+
+    expect(state.pending).toBeNull()
+    expect(state.control.used).toEqual({})
+    expect(log.prompts).toEqual([])
+  })
+
+  it('at full: the late ask is Claude\'s, shows its class, is counted against the budget, and waits for the person', async () => {
+    const { state, log } = await landDuringOpen('full')
+    const pending = state.pending
+
+    expect(pending).toMatchObject({ source: 'claude' })
+    expect(['spend', 'delete']).toContain(pending?.kind)
+    expect(pending?.kind).toBe(classOf(pending!))
+    expect(state.control.used[pending?.kind ?? '']).toBe(1)
+    expect(log.prompts).toEqual([])
+  })
+})

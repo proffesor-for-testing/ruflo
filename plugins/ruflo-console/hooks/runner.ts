@@ -181,9 +181,10 @@ export function createRunner(state: State, host: Host, deps: RunnerDeps): Runner
 
     const pending: Pending = { id: asks, view: state.view, ...(kind !== null && { rememberKey: kind }), ...(spec.scope !== undefined && { scope: spec.scope }), label: spec.label, args: spec.args, expect: spec.expect, askedAtMs: Date.now(), source: byClaude ? 'claude' : 'you', ...(spec.shows !== undefined && { shows: spec.shows }), ...(spec.note !== undefined && { note: spec.note }), ...(spec.declared !== undefined && { declared: spec.declared }) }
 
-    // Claude's ask that lands after its tool call returned (it was screened first): no call is left to settle it, so the same gate runs here.
-    // It always waits for the person, even in auto: nobody is there to report what an unattended run did.
-    if (byClaude && !state.control.viaModel) {
+    // Claude's ask that lands after the tool call that raised it returned (it was screened first): no call is left to settle it, so the same
+    // gate runs here. That holds while another of Claude's calls is running too (console_open settles nothing), so it is the call that counts,
+    // not `viaModel`. It always waits for the person, even in auto: nobody is there to report what an unattended run did.
+    if (byClaude && (!state.control.viaModel || origin.call !== state.control.calls)) {
       // Stop pressed meanwhile refuses before the gate, so a refused ask is not counted against the budget.
       const gate = state.control.paused ? null : gateClaudeAsk(state, pending, origin.level)
 
@@ -197,6 +198,8 @@ export function createRunner(state: State, host: Host, deps: RunnerDeps): Runner
       }
 
       if (gate.kind !== 'read') pending.kind = gate.kind
+      // Gated and counted here: a later call's settlePending must not gate it again or confirm it for Claude.
+      pending.gated = true
       logControl(state, 'ask', spec.label, 'waiting', 'screened first; waits for the person')
     }
 

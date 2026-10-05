@@ -99,11 +99,12 @@ export const logControl = (state: State, tool: string, summary: string, outcome:
 /**
  * Who raised an ask, captured at the moment it was raised. An ask that is screened by AIDefence first (ask, mission-guide, research) lands
  * after Claude's tool call has returned and `viaModel` is false again: without this it would be attributed to the person and skip the
- * level, the budget and the class shown on the card (ADR-450 T8, T14). The level is the one Claude had when it asked.
+ * level, the budget and the class shown on the card (ADR-450 T8, T14). The level is the one Claude had when it asked; `call` is the tool call
+ * that raised it (`state.control.calls` counts every call), so an ask that lands during a LATER call of Claude's is still known to be late.
  */
-export type AskOrigin = { by: 'you' } | { by: 'claude'; level: ControlLevel }
+export type AskOrigin = { by: 'you' } | { by: 'claude'; level: ControlLevel; call: number }
 
-export const originOf = (state: State): AskOrigin => (state.control.viaModel ? { by: 'claude', level: levelOf(settingsOf(state).ai.modelControl) } : { by: 'you' })
+export const originOf = (state: State): AskOrigin => (state.control.viaModel ? { by: 'claude', level: levelOf(settingsOf(state).ai.modelControl), call: state.control.calls } : { by: 'you' })
 
 /** What the gate decided for an ask of Claude's: refused for its level or an always-ask budget, else it waits for the person or may confirm itself. */
 export type Gate =

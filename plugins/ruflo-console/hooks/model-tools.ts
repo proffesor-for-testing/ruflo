@@ -140,7 +140,8 @@ async function settlePending(deps: ModelToolDeps, tool: string, id: string, aske
   const pending = state.pending
 
   // An ask the person raised (one of theirs that landed during this call, screened first) is theirs to answer: never Claude's to confirm.
-  if (pending === null || pending.source === 'you') return null
+  // A screened ask of Claude's that landed late was gated and counted by the runner already, and waits for the person.
+  if (pending === null || pending.source === 'you' || pending.gated === true) return null
 
   const gate = gateClaudeAsk(state, pending)
   const { kind, level } = gate
