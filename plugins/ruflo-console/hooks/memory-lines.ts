@@ -4,9 +4,9 @@
  * reads JSON. The CLI's own warnings that change the meaning of an answer (a second store it did not read, a key not
  * found) are kept, first. And the recency binning the view draws as a timeline. Pure: strings in, strings out.
  */
-import { isoOf } from './data/bounds'
+import { countOf, isoOf } from './data/bounds'
 import { jsonAfter } from './data/cli'
-import { msOf, numberOf, plain, recordOf } from './data/parse'
+import { msOf, plain, recordOf } from './data/parse'
 import { labLines } from './mh-lab'
 
 /** An entry's value may be long: the panel scrolls (j/k), so it keeps more lines than the MetaHarness lab. */
@@ -65,7 +65,7 @@ function entryLines(record: Record<string, unknown>): string[] {
   const value = record.content ?? record.value
   const body = typeof value === 'string' ? value : JSON.stringify(value ?? null, null, 2)
   const updated = isoOf(msOf(record.updatedAt ?? record.storedAt))
-  const head = `${short(record.namespace, 40)}/${short(record.key, 128)} · ${body.length} chars · read ${numberOf(record.accessCount) ?? 'n/a'}× · ${record.hasEmbedding === true ? 'has a vector' : 'no vector'}${updated !== undefined ? ` · updated ${updated.slice(0, 16).replace('T', ' ')}` : ''}`
+  const head = `${short(record.namespace, 40)}/${short(record.key, 128)} · ${body.length} chars · read ${countOf(record.accessCount) ?? 'n/a'}× · ${record.hasEmbedding === true ? 'has a vector' : 'no vector'}${updated !== undefined ? ` · updated ${updated.slice(0, 16).replace('T', ' ')}` : ''}`
 
   return [head, ...(Array.isArray(record.tags) && record.tags.length > 0 ? [`tags: ${record.tags.map(tag => short(tag, 24)).join(', ')}`] : []), '', ...wrap(body)]
 }
@@ -101,7 +101,7 @@ function listLines(rows: unknown[]): string[] {
     ...entries.slice(0, 60).map(row => {
       const at = isoOf(msOf(row.updatedAt ?? row.createdAt ?? row.storedAt))
 
-      return `${row.hasEmbedding === true ? '◆' : '◇'} ${short(row.namespace, 24)}/${short(row.key, 80)} · ${numberOf(row.size) ?? 'n/a'} B${at !== undefined ? ` · ${at.slice(0, 16).replace('T', ' ')}` : ''}`
+      return `${row.hasEmbedding === true ? '◆' : '◇'} ${short(row.namespace, 24)}/${short(row.key, 80)} · ${countOf(row.size) ?? 'n/a'} B${at !== undefined ? ` · ${at.slice(0, 16).replace('T', ' ')}` : ''}`
     }),
   ]
 }

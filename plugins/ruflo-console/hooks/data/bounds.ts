@@ -17,5 +17,14 @@ export const isoOf = (ms: number | null | undefined): string | undefined => (typ
 /** A whole, non-negative count no larger than the ceiling, or undefined for anything else (negative, NaN, a string). */
 export const countOf = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.min(Math.floor(value), COUNT_CEILING) : undefined)
 
+/** The largest money amount kept, in minor units (cents): ten trillion dollars. Past it a value is not a budget but a hostile number. */
+export const MINOR_CEILING = 1e15
+
+/**
+ * A money amount in minor units: whole, non-negative and no larger than the ceiling, or undefined (drawn as n/a). A budget, a
+ * reservation or a settlement is never negative in ADR-406, so a negative amount is refused rather than drawn as `$-0.01`.
+ */
+export const minorOf = (value: unknown): number | undefined => (typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= MINOR_CEILING ? value : undefined)
+
 /** A share held to 0..1, or undefined for a value that is not a finite number. */
 export const ratioOf = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : undefined)

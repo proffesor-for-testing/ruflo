@@ -54,14 +54,14 @@ export function taskProgress(mission: Mission): string {
   return `${done}${partial}/${mission.plan.taskCount}`
 }
 
-/** The budget in one short phrase: settled of the ceiling, or that there is none. */
+/** The budget in one short phrase: settled of the ceiling, or that there is none. An unknown or refused settlement is n/a, never $0.00. */
 export function budgetShort(mission: Mission): string {
   const budget = mission.budget
 
   if (budget === null) return 'no budget'
-  if (budget.ceilingMinor === undefined) return `${money(budget.settledMinor ?? 0, budget.currency)} settled`
+  if (budget.ceilingMinor === undefined) return `${money(budget.settledMinor, budget.currency)} settled`
 
-  return `${money(budget.settledMinor ?? 0, budget.currency)} of ${money(budget.ceilingMinor, budget.currency)}`
+  return `${money(budget.settledMinor, budget.currency)} of ${money(budget.ceilingMinor, budget.currency)}`
 }
 
 /** A mission or task the runtime is working on now. */
@@ -73,7 +73,7 @@ const GLYPH: Record<string, string> = { completed: '●', failed: '✖', blocked
 export function missionRow(mission: Mission, nowMs = 0, maxObjective = 36): string {
   const objective = mission.objective === '' ? '(no objective)' : mission.objective
   const cut = objective.length > maxObjective ? `${objective.slice(0, maxObjective - 1)}…` : objective
-  const glyph = isLive(mission.state) ? spinAt(nowMs) : (GLYPH[mission.state] ?? '○')
+  const glyph = isLive(mission.state) ? spinAt(nowMs) : Object.hasOwn(GLYPH, mission.state) ? (GLYPH[mission.state] as string) : '○'
 
   return `${glyph} ${cut} · ${mission.state} · tasks ${taskProgress(mission)} · verified ${mission.evidence.verified}/${mission.evidence.count} · ${budgetShort(mission)}`
 }

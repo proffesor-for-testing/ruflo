@@ -4,7 +4,8 @@
  * infers execution from it, shows task status as recorded (only `evidence.verified` is verified), and never shows a
  * disconnected executor as failed. Freshness comes from the file's `observedAt`, never from a redraw.
  */
-import { jsonObject, msOf, numberOf, plain, recordOf, stringOf } from './parse'
+import { countOf, minorOf } from './bounds'
+import { jsonObject, msOf, plain, recordOf, stringOf } from './parse'
 
 export const MISSION_CONTRACT = 'ruflo.mission-observation/1'
 export const MISSION_STATES = ['draft', 'planned', 'awaitingAuthorization', 'queued', 'running', 'pauseRequested', 'paused', 'blocked', 'verifying', 'completed', 'failed', 'cancelRequested', 'cancelled'] as const
@@ -56,23 +57,25 @@ export function parseMissions(text: string | null): MissionObservation | null {
         ? []
         : [{ id: taskId, title: plain(task.title, 80), dependsOn: (Array.isArray(task.dependsOn) ? task.dependsOn : []).slice(0, 20).flatMap(dep => (typeof dep === 'string' && ID.test(dep) ? [dep] : [])), status: stringOf(task.status, 20) ?? 'unknown' }]
     })
+    const count = countOf(evidence?.count) ?? 0
     const out: Mission = {
       id,
       objective: plain(mission.objective, 200),
       state: stringOf(mission.state, 30) ?? 'unknown',
-      revision: numberOf(mission.revision) ?? 0,
+      revision: countOf(mission.revision) ?? 0,
       executionMode: stringOf(mission.executionMode, 30) ?? 'unknown',
-      plan: { revision: numberOf(plan?.revision) ?? 0, taskCount: numberOf(plan?.taskCount) ?? tasks.length, tasks },
+      // The plan holds at least the tasks the record lists (a smaller or hostile taskCount would hide them).
+      plan: { revision: countOf(plan?.revision) ?? 0, taskCount: Math.max(countOf(plan?.taskCount) ?? 0, tasks.length), tasks },
       budget:
         budget === null
           ? null
           : {
               currency: stringOf(budget.currency, 8) ?? '?',
-              ...Object.fromEntries((['ceilingMinor', 'estimatedMinor', 'reservedMinor', 'settledMinor', 'unresolvedMinor'] as const).flatMap(key => (numberOf(budget[key]) !== undefined ? [[key, numberOf(budget[key])]] : []))),
+              ...Object.fromEntries((['ceilingMinor', 'estimatedMinor', 'reservedMinor', 'settledMinor', 'unresolvedMinor'] as const).flatMap(key => (minorOf(budget[key]) !== undefined ? [[key, minorOf(budget[key])]] : []))),
             },
-      evidence: { count: numberOf(evidence?.count) ?? 0, verified: numberOf(evidence?.verified) ?? 0 },
+      evidence: { count, verified: Math.min(countOf(evidence?.verified) ?? 0, count) },
       executor: executor === null ? null : { connection: stringOf(executor.connection, 20) ?? 'unknown', ...(msOf(executor.observedAt) !== undefined && { observedAtMs: msOf(executor.observedAt) }) },
-      unresolvedOperations: numberOf(mission.unresolvedOperations) ?? 0,
+      unresolvedOperations: countOf(mission.unresolvedOperations) ?? 0,
     }
     const blocked = stringOf(mission.blockedReason, 120)
     const updated = msOf(mission.updatedAt)
@@ -86,11 +89,13 @@ export function parseMissions(text: string | null): MissionObservation | null {
   return { observedAtMs: msOf(value.observedAt) ?? null, isTruncated: value.truncated === true, missions }
 }
 
-/** Minor units as money: 1000 USD minor → "$10.00"; other currencies by code. */
+/** Minor units as money: 1000 USD minor → "$10.00"; other currencies by code; n/a for anything minorOf refuses (never `$-1e+306`). */
 export function money(minor: number | undefined, currency: string): string {
-  if (minor === undefined) return 'n/a'
+  const held = minorOf(minor)
 
-  const major = (minor / 100).toFixed(2)
+  if (held === undefined) return 'n/a'
+
+  const major = (held / 100).toFixed(2)
 
   return currency === 'USD' ? `$${major}` : `${major} ${currency}`
 }

@@ -6,16 +6,18 @@
 import { describe, expect, it } from 'vitest'
 
 import { parseAutopilot, parseTemplates, parseWorkflows } from '../hooks/data/automate'
-import { countOf, dateMsOf, isoOf, MAX_DATE_MS, ratioOf } from '../hooks/data/bounds'
+import { countOf, dateMsOf, isoOf, MAX_DATE_MS, minorOf, ratioOf } from '../hooks/data/bounds'
 import { intelligenceProbe, type Intelligence } from '../hooks/data/cli'
 import { diffEvents } from '../hooks/data/events'
 import type { ReadCache, ReaderFs } from '../hooks/data/files'
+import { money, parseMissions } from '../hooks/data/missions'
 import { parseModStatus } from '../hooks/data/mods'
 import { msOf } from '../hooks/data/parse'
 import { roomFeed } from '../hooks/data/room'
 import { readSnapshot, type Snapshot } from '../hooks/data/snapshot'
 import { lineageOf } from '../hooks/gfx/evolve'
 import { gauge, memLines } from '../hooks/memory-lines'
+import { mcOf } from '../hooks/mission-control'
 import { roomOf } from '../hooks/room'
 import { newState, VIEWS } from '../hooks/state'
 import { setLook, type Actions } from '../hooks/views/common'
@@ -43,11 +45,20 @@ const memoryFs = (f: Record<string, string>): ReaderFs => ({
   },
 })
 
-/** Every number in a JSON value replaced by `n`. */
-const numbers = (value: unknown, n: number): unknown =>
-  typeof value === 'number' ? n : Array.isArray(value) ? value.map(v => numbers(v, n)) : value !== null && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, numbers(v, n)])) : value
+/** Keys that say which shape a file is: kept as written, so the reader takes the file and its numbers reach the screen. */
+const SHAPE_KEYS = new Set(['schemaVersion', 'version'])
 
-/** The run fixture with every number in every JSON file set to `n` (a mod status file keeps version 1 so it is read). */
+/** Every number in a JSON value replaced by `n`, except a schema version. */
+const numbers = (value: unknown, n: number): unknown =>
+  typeof value === 'number'
+    ? n
+    : Array.isArray(value)
+      ? value.map(v => numbers(v, n))
+      : value !== null && typeof value === 'object'
+        ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, SHAPE_KEYS.has(k) ? v : numbers(v, n)]))
+        : value
+
+/** The run fixture with every number in every JSON file set to `n` (schema versions kept, so every file is still read). */
 async function snapshotWith(n: number, only?: string): Promise<Snapshot> {
   const base: Record<string, string> = { ...RUFLO_FILES, '.claude-flow/missions/observation.json': MISSION_OBSERVATION, '.claude-flow/evil-mod/status.json': JSON.stringify({ version: 1, guard: true, calls: 3, blocked: 1, updatedMs: 2, startedMs: 1 }) }
   const files: Record<string, string> = {}
@@ -57,9 +68,7 @@ async function snapshotWith(n: number, only?: string): Promise<Snapshot> {
 
     if (only === undefined || path === only) {
       try {
-        const value = numbers(JSON.parse(text), n) as Record<string, unknown>
-
-        out = JSON.stringify(path.includes('-mod/') ? { ...value, version: 1 } : value)
+        out = JSON.stringify(numbers(JSON.parse(text), n))
       } catch {
         // not JSON: kept as written
       }
@@ -142,30 +151,96 @@ describe('counts that are negative, huge or not whole', () => {
     expect(drawn(() => viewText({ state, nowMs: 5_000, columns: 120, act }, 'learning'))).toBe('drew')
   })
 
+  /** Exponent notation (1e+308, 1e-7), a minus before a digit that is not part of a date or an id (-1 runs, $-0.01), NaN, Infinity. */
+  const SWEEP = /\bNaN\b|Infinity|\bundefined\b|\de[+-]\d|(^|[\s/$(:])-\d|-\d+%/
+
   for (const n of [-1, 1e308, -1e308, 1e17, 0.0000001]) {
-    it(`every number in every file set to ${n}: every view (Room with a mod open) draws, and no NaN, Infinity, exponent or negative share`, async () => {
+    it(`every number in every file set to ${n}: every view (Room with a mod open, Missions on its record tab) draws, and no NaN, Infinity, exponent or negative`, async () => {
       setLook('plain')
       const state = newState({})
 
       state.snapshot = await snapshotWith(n)
       // The Room with the mod's detail open: it draws the mod's times as ISO text.
       roomOf(state).mod = 'evil'
+      // Missions on the record tab: the observation's numbers, drawn (the plan tab draws none of them).
+      mcOf(state).tab = 'record'
       const problems: string[] = []
+      const screens = new Map<string, string>()
 
       for (const view of VIEWS) {
         state.view = view.id
         try {
           const screen = viewText({ state, nowMs: 5_000, columns: 120, act }, view.id)
 
-          for (const line of screen.split('\n')) if (/\bNaN\b|Infinity|\bundefined\b|e\+\d{2,}|-\d+%|\$-/.test(line)) problems.push(`${view.id}: ${line.trim().slice(0, 140)}`)
+          screens.set(view.id, screen)
+          for (const line of screen.split('\n')) if (SWEEP.test(line)) problems.push(`${view.id}: ${line.trim().slice(0, 140)}`)
         } catch (error) {
           problems.push(`${view.id}: threw ${String(error)}`)
         }
       }
 
       expect(problems).toEqual([])
+      // The sweep read real screens: every view drew something, and the record tab drew both missions with their numbers.
+      for (const view of VIEWS) expect(screens.get(view.id)?.trim().length ?? 0, view.id).toBeGreaterThan(0)
+      expect(state.snapshot.missions?.missions).toHaveLength(2)
+      expect(screens.get('missions')).toMatch(/Mission record ─+ 2 · observed /)
+      expect(screens.get('missions')).toContain('Ship a verified artifact')
+      expect(screens.get('missions')).toMatch(/verified \d+\/\d+ · /)
+      expect(screens.get('missions')).toMatch(/evidence \d+\/\d+ verified · budget /)
     })
   }
+
+  it('the sweep pattern catches what the record tab drew before the fix', () => {
+    for (const bad of ['verified -1e+308/-1e+308', '$-1e+306 of $-1e+306', 'rev -1e+308', 'plan rev 1e+308: (+1e+308)', '$-0.01 of $-0.01', 'tasks 0+/1e-7', '-1 runs', '(-1)']) expect(SWEEP.test(bad), bad).toBe(true)
+    for (const good of ['2026-10-02 03:29', 'msn_a2852484056873a25a593d16', 'hive-worker-1790903400000-a1b2', 'rev 9007199254740991', '$10.00 of $10.00', 'sha256:f4f3e2e2']) expect(SWEEP.test(good), good).toBe(false)
+  })
+})
+
+describe('the mission record (ADR-406 observation) with hostile numbers', () => {
+  const observation = (mission: Record<string, unknown>) =>
+    JSON.stringify({ schemaVersion: 1, contract: 'ruflo.mission-observation/1', observedAt: '2026-10-02T03:29:44.705Z', missions: [{ missionId: 'msn_hostile', objective: 'hostile numbers', state: 'running', executionMode: 'session-bound', ...mission }] })
+  const tasks = [{ id: 'a', status: 'pending' }, { id: 'b', status: 'recorded-done' }, { id: 'c', status: 'pending' }]
+  const HOSTILE = { revision: -1e308, plan: { revision: 1e308, taskCount: 1e-7, tasks }, evidence: { count: -1e308, verified: -1e308 }, unresolvedOperations: 1e308, budget: { currency: 'USD', ceilingMinor: -1e308, settledMinor: -1, estimatedMinor: 1e306, reservedMinor: 0.5, unresolvedMinor: Number.MAX_SAFE_INTEGER } }
+
+  it('minorOf keeps whole, non-negative minor units up to 1e15 and money() draws anything else as n/a', () => {
+    expect([minorOf(0), minorOf(1000), minorOf(1e15), minorOf(1e15 + 1), minorOf(-1), minorOf(0.5), minorOf(Number.NaN), minorOf('100')]).toEqual([0, 1000, 1e15, undefined, undefined, undefined, undefined, undefined])
+    expect([money(1000, 'USD'), money(-1, 'USD'), money(-1e306, 'USD'), money(1e306, 'EUR'), money(Number.POSITIVE_INFINITY, 'USD'), money(0.5, 'USD'), money(1e15, 'USD')]).toEqual(['$10.00', 'n/a', 'n/a', 'n/a', 'n/a', 'n/a', '$10000000000000.00'])
+  })
+
+  it('the parser holds every count whole and non-negative, verified never above the count, and refuses out-of-range money', () => {
+    const mission = parseMissions(observation(HOSTILE))?.missions[0]
+
+    expect(mission).toMatchObject({ revision: 0, plan: { revision: Number.MAX_SAFE_INTEGER, taskCount: 3 }, evidence: { count: 0, verified: 0 }, unresolvedOperations: Number.MAX_SAFE_INTEGER })
+    expect(mission?.budget).toEqual({ currency: 'USD' })
+    expect(parseMissions(observation({ evidence: { count: 2, verified: 5 } }))?.missions[0]?.evidence).toEqual({ count: 2, verified: 2 })
+    expect(parseMissions(observation({ plan: { taskCount: 7, tasks } }))?.missions[0]?.plan.taskCount).toBe(7)
+  })
+
+  it('Missions → record tab draws the hostile mission without an exponent, a negative or a fraction', () => {
+    setLook('plain')
+    const state = newState({})
+
+    state.snapshot = { plugins: { installed: [] }, missions: parseMissions(observation(HOSTILE)) } as never
+    mcOf(state).tab = 'record'
+    const screen = viewText({ state, nowMs: Date.parse('2026-10-02T03:30:00Z'), columns: 200, act }, 'missions')
+
+    expect(screen).toContain('hostile numbers')
+    expect(screen).toContain('tasks 1/3 · verified 0/0 · n/a settled')
+    expect(screen).toContain('rev 0 ·')
+    expect(screen).toContain(`plan rev ${Number.MAX_SAFE_INTEGER}: ○ a → ● b → ○ c`)
+    expect(screen).toContain('evidence 0/0 verified · budget n/a settled, n/a reserved of n/a (estimate n/a)')
+    expect(screen).toContain(`${Number.MAX_SAFE_INTEGER} operation(s) unresolved`)
+    expect(screen.split('\n').filter(line => /\de[+-]\d|(^|[\s/$(:])-\d|\d\.\d{3,}/.test(line))).toEqual([])
+  })
+})
+
+describe('Memory Lab counts', () => {
+  it('a read count or a size that is negative or huge draws as n/a or a whole number, never in exponent notation', () => {
+    expect(memLines('mem-get', JSON.stringify({ key: 'k', namespace: 'n', value: 'v', accessCount: -1e308 }))[0]).toContain('read n/a×')
+    expect(memLines('mem-get', JSON.stringify({ key: 'k', namespace: 'n', value: 'v', accessCount: 1e300 }))[0]).toContain(`read ${Number.MAX_SAFE_INTEGER}×`)
+    expect(memLines('mem-get', JSON.stringify({ key: 'k', namespace: 'n', value: 'v', accessCount: 2.5 }))[0]).toContain('read 2×')
+    expect(memLines('mem-list', JSON.stringify({ total: 3, entries: [{ key: 'k1', namespace: 'ns', size: -1 }, { key: 'k2', namespace: 'ns', size: 1e308 }, { key: 'k3', namespace: 'ns', size: 1e-7 }] }))).toEqual(['3 entries', '◇ ns/k1 · n/a B', `◇ ns/k2 · ${Number.MAX_SAFE_INTEGER} B`, '◇ ns/k3 · 0 B'])
+  })
 })
 
 describe('room feed ids', () => {

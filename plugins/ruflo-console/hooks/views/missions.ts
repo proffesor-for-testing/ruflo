@@ -13,7 +13,7 @@ const TASK_GLYPH: Record<string, string> = { pending: '○', running: '◐', 're
 function missionRows(ctx: Ctx, mission: Mission, isFirst: boolean): RenderElement[] {
   const budget = mission.budget
   const rows: RenderElement[] = [
-    text(ctx, `${isFirst ? '▸' : ' '} ${mission.objective || '(no objective)'}`, { bold: true, ...(STATE_COLOR[mission.state] !== undefined && { color: STATE_COLOR[mission.state] }) }),
+    text(ctx, `${isFirst ? '▸' : ' '} ${mission.objective || '(no objective)'}`, { bold: true, ...(Object.hasOwn(STATE_COLOR, mission.state) && { color: STATE_COLOR[mission.state] as string }) }),
     text(
       ctx,
       `    ${isLive(mission.state) ? `${spinAt(ctx.nowMs)} ` : ''}${mission.state} · rev ${mission.revision} · ${mission.executionMode === 'session-bound' ? 'session-bound (runs only while a session drives it)' : mission.executionMode} · ${mission.id}`,
@@ -21,7 +21,7 @@ function missionRows(ctx: Ctx, mission: Mission, isFirst: boolean): RenderElemen
     ),
     text(
       ctx,
-      `    plan rev ${mission.plan.revision}: ${mission.plan.taskCount === 0 ? 'no tasks yet' : mission.plan.tasks.map(task => `${task.status === 'running' ? spinAt(ctx.nowMs) : (TASK_GLYPH[task.status] ?? '?')} ${task.id}`).join(' → ')}${mission.plan.taskCount > mission.plan.tasks.length ? ` (+${mission.plan.taskCount - mission.plan.tasks.length})` : ''}`,
+      `    plan rev ${mission.plan.revision}: ${mission.plan.taskCount === 0 ? 'no tasks yet' : mission.plan.tasks.map(task => `${task.status === 'running' ? spinAt(ctx.nowMs) : Object.hasOwn(TASK_GLYPH, task.status) ? TASK_GLYPH[task.status] : '?'} ${task.id}`).join(' → ')}${mission.plan.taskCount > mission.plan.tasks.length ? ` (+${mission.plan.taskCount - mission.plan.tasks.length})` : ''}`,
     ),
     text(
       ctx,
