@@ -36,8 +36,6 @@ export function registerRollup(on: On, state: ModState) {
   r.enabled = true
 
   on('session.start', { surface: /^[\s\S]*$/ }, async ($, e, next) => {
-    // /clear ends one session and starts the next in the same process: each gets its own record.
-    Object.assign(r, { tools: 0, denied: 0, spawns: 0, rung: 'OK', written: false, base: { routed: state.routed, tightened: state.tightened } })
     const result = await next(e)
     try {
       r.recent = readLedger(await $.store.get(LEDGER))
@@ -83,6 +81,9 @@ export function registerRollup(on: On, state: ModState) {
         // an unwritable ledger only means this session has no record
       }
     }
+    // /clear ends this session and the process goes on with the next (no
+    // session.start fires for it): the next session gets its own counters and record.
+    if (e.reason === 'clear') Object.assign(r, { tools: 0, denied: 0, spawns: 0, rung: 'OK', written: false, base: { routed: state.routed, tightened: state.tightened } })
     return next(e)
   }).catch(($, e, next) => next(e))
 }

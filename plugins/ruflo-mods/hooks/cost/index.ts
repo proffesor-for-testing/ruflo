@@ -17,9 +17,11 @@ export function registerCost(on: On, state: ModState, options: ModOptions) {
   state.budget = { level: 'OK', limit }
   let announced: BudgetLevel = 'OK' // the highest rung told this session; a fall and a second rise stay quiet
 
-  // The budget is per session, and /clear starts a new one in the same process
-  // with its cost counted from zero: the ladder and the hard stop start over.
-  on('session.start', { surface: /^[\s\S]*$/ }, ($, e, next) => {
+  // The budget is per session. /clear ends one (session.end, reason clear; no
+  // session.start follows) and the process goes on with the next one's cost
+  // counted from zero, so the ladder and the hard stop start over. Registered
+  // after the rollup, which records this session's rung before this runs.
+  on('session.end', { reason: /^clear$/ }, ($, e, next) => {
     announced = 'OK'
     state.budget = { level: 'OK', limit }
     return next(e)

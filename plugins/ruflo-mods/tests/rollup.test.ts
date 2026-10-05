@@ -118,8 +118,8 @@ describe('sessionRollup option (ADR-451 item 6)', () => {
     const s = store(on)
     await $.session.start(START)
     await $.tool.call({ tool: 'Read', file_path: 'a' } as never)
+    // As the engine runs /clear: session.end with reason clear, then the next session's work; no session.start.
     await $.session.end({ ...(END as object), reason: 'clear' } as never)
-    await $.session.start({ ...START, source: 'clear' } as never)
     for (const f of ['b', 'c', 'd']) await $.tool.call({ tool: 'Read', file_path: f } as never)
     await $.session.end(END)
     expect((s.kv.get('sessionRollup') as Rollup[]).map(r => r.tools)).toEqual([1, 3])
