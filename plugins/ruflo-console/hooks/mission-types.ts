@@ -19,6 +19,8 @@ export type MissionRecord = {
   cancelled: boolean
   auto: boolean
   createdAtMs: number
+  /** Auto-run's hand-outs per task since the person last turned it on or resumed (mission-guard.ts); saved with the ledger. */
+  handouts?: Record<string, number>
   /** The mission's loop manager state (ADR-443), validated by parseLoop where it is read. */
   loop?: unknown
 }

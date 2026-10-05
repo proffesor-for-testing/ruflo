@@ -9,7 +9,7 @@
  */
 import type { ActionSpec } from './actions'
 import { PHASE_NAME, plan as planOf, stageOf, type Plan, type Profile, profileOf, type Rigor, toMissionPlan } from './goap'
-import { capVerdict, isCapReached } from './mission-guard'
+import { capVerdict, handoutsOf, isCapReached, parseHandouts, resetHandouts } from './mission-guard'
 import type { Host } from './host'
 import { plain, type TaskRecord } from './data/parse'
 import { isAvailable, MISSION_SKILLS, slashOf, GOALS_PLUGIN } from './mission-skills'
@@ -137,8 +137,13 @@ export async function loadLedger(state: State, host: Host): Promise<void> {
 
     const isShaped = Array.isArray(m?.tasks) && m.tasks.every(task => typeof task?.id === 'string' && Array.isArray(task.dependsOn)) && Array.isArray(m.events)
 
-    // Auto-run never survives a restart: a new session starts by asking.
-    if (typeof m?.id === 'string' && /^msn_[a-f0-9]{24}$/.test(m.id) && isShaped) mc.missions.set(m.id, { ...m, auto: false })
+    if (typeof m?.id !== 'string' || !/^msn_[a-f0-9]{24}$/.test(m.id) || !isShaped) continue
+
+    const { handouts: storedHandouts, ...rest } = m
+    const handouts = parseHandouts(storedHandouts, m.tasks.map(task => task.id))
+
+    // Auto-run never survives a restart: a new session starts by asking. A hand-out count that is not well formed is dropped.
+    mc.missions.set(m.id, { ...rest, auto: false, ...(handouts !== undefined && { handouts }) })
   }
 
   const active = (saved as { active?: unknown }).active
@@ -313,6 +318,8 @@ export function missionActions(state: State, host: Host, runner: Runner): Missio
       if (mission === null || mission.auto === on) return
 
       mission.auto = on
+      // The person turning auto-run on is their go-ahead: the hand-out count starts again. Claude turning it on is not.
+      if (on && !state.control.viaModel) resetHandouts(mission)
       record(mission, { type: on ? 'auto.on' : 'auto.off', ...(state.control.viaModel && { by: 'model' as const }) })
       saveLedger(state, host)
       host.invalidate()
@@ -420,10 +427,5 @@ export function advance(state: State, host: Host): void {
 /** The most times auto-run hands out (or tries to hand out) one task before it pauses the mission. */
 export const AUTO_DISPATCH_LIMIT = 3
 
-/** Hand-outs of one task, sent or failed, since the person last turned auto-run on or resumed the mission. */
-function attemptsOf(mission: MissionRecord, taskId: string): number {
-  // Only the person's own go-ahead starts the count again: Claude turning auto-run on or resuming does not (it receives the turns).
-  const since = mission.events.findLastIndex(event => (event.type === 'auto.on' || event.type === 'mission.resumed') && event.by !== 'model')
-
-  return mission.events.slice(since + 1).filter(event => event.taskId === taskId && event.type === 'task.dispatch_started').length
-}
+/** Hand-outs of one task, sent or failed, since the person last turned auto-run on or resumed the mission (the events stay the audit trail). */
+const attemptsOf = (mission: MissionRecord, taskId: string): number => handoutsOf(mission, taskId)

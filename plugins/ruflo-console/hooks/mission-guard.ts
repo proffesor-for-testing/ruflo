@@ -42,3 +42,41 @@ export function capVerdict(state: State, mission: MissionRecord, nowMs = Date.no
 
 /** True when auto-run should stop handing out tasks because this mission's spend reached its cap. */
 export const isCapReached = (state: State, mission: MissionRecord): boolean => mission.auto && capVerdict(state, mission) === 'reached'
+
+/**
+ * Auto-run's hand-out count per task, kept on the mission record itself (it is saved with the ledger) and never rebuilt from the event
+ * log: the log keeps only its last 500 events, so calls that each record one could push the old hand-outs out and reset the count.
+ * Only the person's own go-ahead (auto-run turned on, or a resume, that changed something) starts it again.
+ */
+export const handoutsOf = (mission: MissionRecord, taskId: string): number => (mission.handouts !== undefined && Object.hasOwn(mission.handouts, taskId) ? (mission.handouts[taskId] ?? 0) : 0)
+
+export function countHandout(mission: MissionRecord, taskId: string): void {
+  const handouts = mission.handouts ?? (mission.handouts = Object.create(null) as Record<string, number>)
+
+  handouts[taskId] = handoutsOf(mission, taskId) + 1
+}
+
+export const resetHandouts = (mission: MissionRecord): void => void (mission.handouts = Object.create(null) as Record<string, number>)
+
+/** A stored count as loaded: a plain object of this mission's own task ids to whole numbers of hand-outs, or nothing at all. */
+export function parseHandouts(raw: unknown, taskIds: readonly string[]): Record<string, number> | undefined {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+
+  const proto = Object.getPrototypeOf(raw) as unknown
+
+  if (proto !== Object.prototype && proto !== null) return undefined
+
+  const keys = Object.getOwnPropertyNames(raw)
+  const out = Object.create(null) as Record<string, number>
+
+  if (keys.length > taskIds.length || Object.getOwnPropertySymbols(raw).length > 0) return undefined
+
+  for (const key of keys) {
+    const value = (raw as Record<string, unknown>)[key]
+
+    if (!taskIds.includes(key) || typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) return undefined
+    out[key] = value
+  }
+
+  return out
+}

@@ -11,7 +11,8 @@ import { missionCostProbe } from '../hooks/data/cost-probes'
 import { capText, type MissionCost } from '../hooks/data/mission-cost'
 import type { TaskRecord } from '../hooks/data/parse'
 import type { Host } from '../hooks/host'
-import { advance, dispatchSpec, mcOf, missionActions, type MissionRecord } from '../hooks/mission-control'
+import { advance, dispatchSpec, loadLedger, mcOf, missionActions, type MissionRecord } from '../hooks/mission-control'
+import { callTool, type ModelToolDeps } from '../hooks/model-tools'
 import { capOf, capVerdict, isCapReached } from '../hooks/mission-guard'
 import { createRunner } from '../hooks/runner'
 import { loadAiPrefs, settingsOf } from '../hooks/settings'
@@ -64,7 +65,7 @@ function world(exitFor: (tool: string) => number = () => 0) {
 
   const runner = createRunner(state, host, { freshRead: async () => undefined, setView: () => undefined, drill: () => undefined, command: () => undefined })
 
-  return { calls, host, state, mission, actions: missionActions(state, host, runner) }
+  return { calls, host, state, mission, runner, actions: missionActions(state, host, runner) }
 }
 
 /** One refresh with Claude idle: advance(), let the dispatch settle, then lapse the 15 s in-flight guard. */
@@ -279,5 +280,91 @@ describe('a mission cap of "0" is no cap everywhere, and never silently replaces
 
     expect(lines.find(line => line.startsWith('cap') || line.includes('cap '))).toMatch(/none set/)
     expect(lines.join('\n')).not.toContain('$0.00')
+  })
+})
+
+describe('the hand-out count is kept apart from the capped event log', () => {
+  /** Claude's own console_run call, through the real tool path, runner and palette entry; each batch of calls is a new turn. */
+  async function claude(w: ReturnType<typeof world>, id: string, text = ''): Promise<string> {
+    if (w.state.control.turnCalls >= 30) w.state.control.turnCalls = 0
+    Object.assign(settingsOf(w.state).ai, { modelControl: 'full', modelConfirm: 'auto' })
+
+    return callTool('console_run', { id, text }, { state: w.state, control: { host: w.host, runner: w.runner } } as unknown as ModelToolDeps)
+  }
+
+  it('Claude flooding the log with more than 500 auto-run toggles, then resuming, gets no fourth prompt', async () => {
+    const w = world()
+
+    await cycle(w, 4)
+    expect(w.calls.prompts).toHaveLength(3)
+    expect(w.mission.paused).toBe(true)
+
+    for (let round = 0; round < 260; round++) {
+      expect(await claude(w, 'mission-auto', 'off')).not.toMatch(/^Refused/)
+      expect(await claude(w, 'mission-auto', 'on')).not.toMatch(/^Refused/)
+    }
+    // The dispatch events are gone from the capped log: only the counter still remembers them.
+    expect(types(w.mission)).not.toContain('task.dispatch_started')
+    expect(await claude(w, 'mission-resume')).not.toMatch(/^Refused/)
+    expect(w.mission.events.at(-1)).toMatchObject({ type: 'mission.resumed', by: 'model' })
+    await cycle(w, 6)
+    expect(w.calls.prompts).toHaveLength(3)
+    expect(w.mission.paused).toBe(true)
+    expect(w.mission.events.at(-1)).toMatchObject({ type: 'auto.limit', taskId: 't1' })
+  })
+
+  it('the count survives a reload, and a malformed or prototype-polluting count in the stored ledger is dropped', async () => {
+    const w = world()
+
+    await cycle(w, 4)
+    expect(w.mission.handouts?.t1).toBe(3)
+
+    const stored = (handouts: unknown) => JSON.parse(JSON.stringify({ active: ID, missions: [{ ...w.mission, handouts }] })) as unknown
+    const load = async (saved: unknown) => {
+      const state = newState({})
+
+      await loadLedger(state, { storeGet: async () => saved } as unknown as Host)
+
+      return mcOf(state).missions.get(ID)
+    }
+
+    // A good count comes back as it was saved (auto-run is still forced off by the reload).
+    const kept = await load(stored({ t1: 3 }))
+
+    expect(kept?.handouts?.t1).toBe(3)
+    expect(kept?.auto).toBe(false)
+
+    const polluted = JSON.parse('{"__proto__": {"t1": 0, "polluted": true}, "t1": 3}') as unknown
+    const bad: unknown[] = [[3], 'three', 7, { t1: -1 }, { t1: 1.5 }, { t1: '3' }, { t1: Number.POSITIVE_INFINITY }, { t1: null }, { constructor: 1 }, { nope: 1 }, Object.fromEntries(Array.from({ length: 300 }, (_, i) => [`t${i}`, 1])), polluted]
+
+    for (const handouts of bad) {
+      const loaded = await load(stored(handouts))
+
+      expect(loaded, JSON.stringify(handouts)).toBeDefined()
+      expect(loaded?.handouts, JSON.stringify(handouts)).toBeUndefined()
+    }
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+  })
+
+  it('the person resuming still starts the count again, after the flood too', async () => {
+    const w = world()
+
+    await cycle(w, 4)
+    for (let round = 0; round < 260; round++) {
+      await claude(w, 'mission-auto', 'off')
+      await claude(w, 'mission-auto', 'on')
+    }
+    w.actions.resume()
+    expect(w.mission.handouts).toEqual({})
+    await cycle(w, 4)
+    expect(w.calls.prompts).toHaveLength(6)
+    expect(w.mission.paused).toBe(true)
+
+    // And the person turning auto-run back on (a real change) starts it again as well.
+    w.actions.auto(false)
+    w.mission.paused = false
+    w.actions.auto(true)
+    await cycle(w, 1)
+    expect(w.calls.prompts).toHaveLength(7)
   })
 })

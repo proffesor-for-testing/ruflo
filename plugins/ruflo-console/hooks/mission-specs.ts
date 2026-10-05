@@ -4,6 +4,7 @@ import { plain, type TaskRecord } from './data/parse'
 import { stageOf, toMissionPlan, type Profile } from './goap'
 import type { Host } from './host'
 import { activeMission, instructionOf, mcOf, nextTask, record, rufloTaskOf, saveLedger } from './mission-control'
+import { countHandout, resetHandouts } from './mission-guard'
 import type { LedgerTask, MissionRecord } from './mission-types'
 import { CLI_PREFIXES, type State } from './state'
 
@@ -161,6 +162,7 @@ export function dispatchSpec(state: State, host: Host, mission: MissionRecord, t
       // Held until the update settles (it may take up to 60 s), and counted before it, so a slow store cannot let attempts past the limit.
       inflight.add(task)
       record(mission, { type: 'task.dispatch_started', taskId: task.id, evidenceRef: task.rufloTaskId })
+      countHandout(mission, task.id)
       const marked = await host.run(argvOf(state, 'task_update', { taskId: task.rufloTaskId, status: 'in_progress', progress: 5 }), 60_000).catch((error: unknown) => ({ exitCode: -1, stdout: '', stderr: error instanceof Error ? error.message : String(error) }))
       const answer = resultOf(marked.stdout)
 
@@ -207,6 +209,8 @@ export function setPaused(state: State, host: Host, paused: boolean): void {
   if (mission === null || mission.cancelled || mission.paused === paused) return
 
   mission.paused = paused
+  // The person resuming is their go-ahead: auto-run's hand-out count starts again. Claude resuming is not.
+  if (!paused && !state.control.viaModel) resetHandouts(mission)
   record(mission, { type: paused ? 'mission.paused' : 'mission.resumed', status: paused ? 'paused' : 'running', ...(state.control.viaModel && { by: 'model' as const }) })
   mcOf(state).last = { label: paused ? 'paused: no more tasks are handed out' : 'resumed', ok: true, detail: paused ? 'a task already handed to Claude finishes first' : 'Run next hands out the next ready task' }
   saveLedger(state, host)
