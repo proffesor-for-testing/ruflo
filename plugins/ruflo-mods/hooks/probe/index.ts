@@ -27,8 +27,8 @@ const MAX_LINE = 240
 
 /**
  * The events this module registers, by name. The engine reads `on` calls
- * statically (it refuses a wrapped or aliased `on`), so the list is kept here
- * and a test fails when it drifts from the `on('<event>', ...)` calls in hooks/.
+ * statically (it refuses a wrapped or aliased `on`), so the list is kept here;
+ * tests/probe.test.ts fails when it drifts from what register() hooks under any option combination.
  */
 const ALWAYS = ['command.run', 'engine.create', 'prompt.submit', 'session.end', 'session.start', 'tool.call', 'tool.check', 'turn.complete'] as const
 

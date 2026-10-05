@@ -1,6 +1,8 @@
 import { describe, expect, test, tier } from 'claude-code/testing'
 
+import { readOptions } from '../hooks/options'
 import { probeLine, probeState, registeredEvents, versionText } from '../hooks/probe'
+import { register } from '../hooks/register'
 import { run } from './fixtures/consumer'
 import { HELPER, ROOT, START, world } from './fixtures/world'
 
@@ -30,6 +32,19 @@ describe('capability probe, pure (ADR-451 item 5)', () => {
     expect(registeredEvents({ toolHints: true, agentTrim: true, deliveryScreen: true, compactCarry: true })).toEqual(
       [...off, 'tool.describe', 'agent.offer', 'agent.spawn', 'session.receive', 'session.send', 'session.compact'].sort(),
     )
+  })
+
+  test('registeredEvents matches what register() hooks, for every option combination', () => {
+    const B = [false, true]
+    for (const costBudgetUsd of [undefined, 5]) for (const costHardStop of B) for (const sessionRollup of B)
+    for (const agentTrim of B) for (const modTrust of ['observe', 'off']) for (const toolHints of B)
+    for (const deliveryScreen of B) for (const compactCarry of B) {
+      const o = { costBudgetUsd, costHardStop, sessionRollup, agentTrim, modTrust, toolHints, deliveryScreen, compactCarry, capabilityProbe: true }
+      const seen = new Set<string>()
+      const chain: { catch: () => unknown } = { catch: () => chain }
+      register(((name: string) => (name !== '*' && seen.add(name), chain)) as never, o as never)
+      expect(registeredEvents(readOptions(o as never)), JSON.stringify(o)).toEqual([...seen].sort())
+    }
   })
 
   test('events hooked only under an option are counted only under it', () => {
