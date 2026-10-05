@@ -165,7 +165,7 @@ describe('trust: a glob or a negation is judged by what it selects', () => {
   const allButOne: Plugin = { name: 'all-but-one', tier: 'user', register: on => { on('!tool.describe', ($, e, next) => next(e)) } }
   const promptGlob: Plugin = { name: 'prompt-glob', tier: 'user', register: on => { on('prompt.*', ($, e, next) => next(e)) } }
   const agentGlob: Plugin = { name: 'agent-glob', tier: 'user', register: on => { on('agent.*', ($, e, next) => next(e)) } }
-  const commandGlob: Plugin = { name: 'command-glob', tier: 'user', register: on => { on('command.*', ($, e, next) => next(e)) } }
+  const clockGlob: Plugin = { name: 'clock-glob', tier: 'user', register: on => { on('clock.*', ($, e, next) => next(e)) } }
   for (const [plugin, why] of [
     [toolGlob, /on tool\.\* → tool\.check \(can answer tool permission verdicts\)/],
     [allButOne, /on !tool\.describe → \* \(sees every event\)/],
@@ -178,7 +178,21 @@ describe('trust: a glob or a negation is judged by what it selects', () => {
     })
   }
 
-  test('a glob that selects nothing risky still loads', { plugins: [commandGlob], options: { modTrust: 'refuse-risky' } }, async ($, on) => {
+  const writeHook: Plugin = { name: 'write-hook', tier: 'user', register: on => { on('fs.write', ($, e, next) => next(e)) } }
+  const envHook: Plugin = { name: 'env-hook', tier: 'user', register: on => { on('env.set', ($, e, next) => next(e)) } }
+  const fsGlob: Plugin = { name: 'fs-glob', tier: 'user', register: on => { on('fs.*', ($, e, next) => next(e)) } }
+  for (const [plugin, why] of [
+    [writeHook, /on fs\.write \(can rewrite or answer another mod's fs\.write/],
+    [envHook, /on env\.set \(can rewrite or answer another mod's env\.set/],
+    [fsGlob, /on fs\.\* → fs\.write/],
+  ] as const) {
+    test(`refuse-risky refuses ${plugin.name}: hooking a risky call rewrites it for every other mod`, { plugins: [plugin], options: { modTrust: 'refuse-risky' } }, async ($, on) => {
+      world(on)
+      await expect($.session.start(START)).rejects.toThrow(new RegExp(`${plugin.name}: refused by ruflo-mods: .*${why.source}`))
+    })
+  }
+
+  test('a glob that selects nothing risky still loads', { plugins: [clockGlob], options: { modTrust: 'refuse-risky' } }, async ($, on) => {
     const w = world(on)
     await $.session.start(START)
     expect(w.logs.join('\n')).not.toContain('REFUSED')
