@@ -51,13 +51,29 @@ export function cachedFile<T>(pathOf: () => string, parse: (text: string) => T) 
     }
     if (seen?.key === key) return seen.read
 
-    let read: Read<T>
-    try {
-      read = { kind: 'ok', value: parse(await fs.read(path)) }
-    } catch (error) {
-      read = isMissing(error) ? { kind: 'absent' } : { kind: 'error', message: String((error as Error)?.message ?? error) }
-    }
+    const read = await readAndParse(fs, path, parse)
     seen = { key, read }
     return read
+  }
+}
+
+const messageOf = (error: unknown) => String((error as Error)?.message ?? error)
+
+/**
+ * Only the read may say "absent": a parse error's message can quote the file's
+ * own text (JSON.parse does), so a corrupt file containing "ENOENT" must still
+ * be an error and never read as "no file here".
+ */
+async function readAndParse<T>(fs: FileHost, path: string, parse: (text: string) => T): Promise<Read<T>> {
+  let text: string
+  try {
+    text = await fs.read(path)
+  } catch (error) {
+    return isMissing(error) ? { kind: 'absent' } : { kind: 'error', message: messageOf(error) }
+  }
+  try {
+    return { kind: 'ok', value: parse(text) }
+  } catch (error) {
+    return { kind: 'error', message: messageOf(error) }
   }
 }

@@ -134,6 +134,24 @@ describe('register', () => {
     expect((await $.tool.check({ tool: 'Read', input: { file_path: 'a.ts' } })).decision).toBe('ask')
   })
 
+  test('tool.check: a parse error that quotes "ENOENT" is still unreadable, never "no policy"', async ($, on) => {
+    const PATH = `${ROOT}/.claude-flow/policy/claude-code.json`
+    const rule = { id: 'no-push', effect: 'deny', actions: ['claude-code.tool.Bash'], resources: ['git push*'] }
+    const w = world(on, {}, { [PATH]: JSON.stringify({ version: 1, mode: 'enforce', rules: [rule] }) })
+    on('tool.check', () => ({ decision: 'allow' }))
+    await $.session.start(START)
+    const push = { tool: 'Bash', input: { command: 'git push origin' } }
+    expect((await $.tool.check(push)).decision).toBe('deny')
+
+    // JSON.parse and the validator both put the file's own text in their message.
+    for (const text of ['{"version": 1, "mode": "enforce", ENOENT', JSON.stringify({ version: 'ENOENT', mode: 'enforce', rules: [rule] })]) {
+      w.files.set(PATH, text)
+      const out = await $.tool.check(push)
+      expect(out.decision, text).toBe('ask')
+      expect(out.reason).toContain('unreadable')
+    }
+  })
+
   test('tool.check: a legacy or unknown-mode projection is unreadable, so the call asks; the report names the state (ADR-450 T10)', async ($, on) => {
     const PATH = `${ROOT}/.claude-flow/policy/claude-code.json`
     const rule = { id: 'no-push', effect: 'deny', actions: ['claude-code.tool.Bash'], resources: ['git push*'] }
