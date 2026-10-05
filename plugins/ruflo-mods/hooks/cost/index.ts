@@ -24,6 +24,7 @@ export function registerCost(on: On, state: ModState, options: ModOptions) {
   on('session.end', { reason: /^clear$/ }, ($, e, next) => {
     announced = 'OK'
     state.budget = { level: 'OK', limit }
+    redraw(state)
     return next(e)
   })
 

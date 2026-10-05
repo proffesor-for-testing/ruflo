@@ -81,9 +81,9 @@ export function registerRollup(on: On, state: ModState) {
         // an unwritable ledger only means this session has no record
       }
     }
-    // /clear ends this session and the process goes on with the next (no
-    // session.start fires for it): the next session gets its own counters and record.
-    if (e.reason === 'clear') Object.assign(r, { tools: 0, denied: 0, spawns: 0, rung: 'OK', written: false, base: { routed: state.routed, tightened: state.tightened } })
+    // /clear and /resume end this session and the process goes on under another
+    // (no session.start fires for it): the next session gets its own counters and record.
+    if (e.reason === 'clear' || e.reason === 'resume') Object.assign(r, { tools: 0, denied: 0, spawns: 0, rung: 'OK', written: false, base: { routed: state.routed, tightened: state.tightened } })
     return next(e)
   }).catch(($, e, next) => next(e))
 }

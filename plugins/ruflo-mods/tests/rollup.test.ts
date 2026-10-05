@@ -125,6 +125,17 @@ describe('sessionRollup option (ADR-451 item 6)', () => {
     expect((s.kv.get('sessionRollup') as Rollup[]).map(r => r.tools)).toEqual([1, 3])
   })
 
+  test('/resume in one process also gives the next session its own record', { options: { sessionRollup: true } }, async ($, on) => {
+    boot(on)
+    const s = store(on)
+    await $.session.start(START)
+    await $.tool.call({ tool: 'Read', file_path: 'a' } as never)
+    await $.session.end({ ...(END as object), reason: 'resume' } as never)
+    for (const f of ['b', 'c']) await $.tool.call({ tool: 'Read', file_path: f } as never)
+    await $.session.end(END)
+    expect((s.kv.get('sessionRollup') as Rollup[]).map(r => r.tools)).toEqual([1, 2])
+  })
+
   test('a hostile stored ledger is treated as empty and replaced by one clean record', { options: { sessionRollup: true } }, async ($, on) => {
     boot(on)
     const s = store(on, { __proto__: 1, length: 1e9, 0: { at: 1 } })
