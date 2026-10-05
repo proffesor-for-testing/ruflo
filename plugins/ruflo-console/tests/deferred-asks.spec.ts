@@ -153,3 +153,29 @@ describe('a screened ask that lands during another of Claude\'s calls is still g
     expect(log.prompts).toEqual([])
   })
 })
+
+describe('Always accept on a card that was replaced', () => {
+  it('remembers nothing and leaves the draft, as a stale Yes runs nothing', async () => {
+    const { settingsActions } = await import('../hooks/settings')
+    const { newState } = await import('../hooks/state')
+    const { settingsOf } = await import('../hooks/settings')
+    const state = newState({})
+    const confirmed: (number | undefined)[] = []
+    const host = { storeSet: async () => undefined, invalidate: () => undefined, after: () => ({ cancel: () => undefined }) } as never
+    const runner = { confirm: (seen?: number) => void confirmed.push(seen) } as never
+    const actions = settingsActions(state, host, runner, () => undefined, () => [], () => [])
+
+    settingsOf(state).ai.autoAccept = false
+    state.terminal.draft = 'half typed'
+    state.pending = { id: 2, label: 'the new card', args: [], expect: 'x', askedAtMs: Date.now() } as never
+    actions.alwaysAccept(1)
+
+    expect(settingsOf(state).ai.autoAccept).toBe(false)
+    expect(state.terminal.draft).toBe('half typed')
+    expect(confirmed).toEqual([])
+
+    actions.alwaysAccept(2)
+    expect(settingsOf(state).ai.autoAccept).toBe(true)
+    expect(confirmed).toEqual([2])
+  })
+})

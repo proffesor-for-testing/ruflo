@@ -387,6 +387,8 @@ export function settingsActions(state: State, host: Host, runner: Runner, load: 
     core: (key, value) => runner.ask(setCore(state, key, value, reloadCore), `“${plain(value, 40)}” is not a value ${key} accepts`),
     ai: patch => saveAiPrefs(state, host, patch),
     alwaysAccept: seen => {
+      // A press on a card that has since been replaced remembers nothing, as the Yes button runs nothing (bindings.ts remember()).
+      if (seen !== undefined && state.pending !== null && state.pending.id !== seen) return
       saveAiPrefs(state, host, { autoAccept: true })
       state.terminal.asked = null
       state.terminal.draft = ''
