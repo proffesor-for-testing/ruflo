@@ -38,22 +38,34 @@ export const USD_CEILING = 1e9
 /** A dollar amount from a report: finite, non-negative and no larger than the ceiling, or undefined (drawn as n/a). */
 export const usdOf = (value: unknown): number | undefined => finiteIn(value, 0, USD_CEILING)
 
-/**
- * A field a lab reader prints as written: a string or boolean as text, a number only when finite and within ±1e15 (rounded to three
- * places, so 12.3456789 reads 12.346 and 1e308 never draws), anything else the fallback.
- */
 /** Six places: the precision the console's own config form accepts (configValueOf), and the last before String() turns to exponents. */
 const placed = (value: number): number => Math.round(value * 1e6) / 1e6
 
-export const shownOf = (value: unknown, fallback = 'n/a'): string =>
-  typeof value === 'string' || typeof value === 'boolean' ? String(value) : typeof value === 'number' ? (finiteIn(value, -1e15, 1e15) === undefined ? 'n/a' : String(placed(value))) : fallback
+/**
+ * A number as text at `places` decimals, except that a non-zero value too small to show there reads "<0.000001" (or ">-0.000001"),
+ * never 0: the CLI writes such values itself (embeddings_init stores hyperbolic.epsilon 1e-15), and 0 would be a false reading.
+ */
+const placedText = (value: number, places = 6): string => {
+  const step = 10 ** -places
 
-/** A measured amount that is never negative (a duration, a size in MB, a time in ms): within 0..1e15, three places, else `fallback`. */
-export const measureOf = (value: unknown, fallback = 'n/a'): string => (finiteIn(value, 0, 1e15) === undefined ? fallback : String(Math.round((value as number) * 1000) / 1000))
+  if (value !== 0 && Math.abs(value) < step) return `${value > 0 ? '<' : '>-'}${step.toFixed(places)}`
+
+  return String(Number((Math.round(value / step) * step).toFixed(places)) || 0)
+}
 
 /**
- * A JSON value as text with every number bounded as shownOf bounds it (1e308 reads "n/a", 12.3456789 reads 12.346): for a value a
- * reader shows whole (a stored memory entry, a config value), so a number inside it is held like every other drawn number.
+ * A field a lab reader prints as written: a string or boolean as text, a number only when finite and within ±1e15 (to six places, so
+ * 12.3456789 reads 12.345679, 1e-15 reads <0.000001 and 1e308 never draws), anything else the fallback.
+ */
+export const shownOf = (value: unknown, fallback = 'n/a'): string =>
+  typeof value === 'string' || typeof value === 'boolean' ? String(value) : typeof value === 'number' ? (finiteIn(value, -1e15, 1e15) === undefined ? 'n/a' : placedText(value)) : fallback
+
+/** A measured amount that is never negative (a duration, a size in MB, a time in ms): within 0..1e15, three places, else `fallback`. */
+export const measureOf = (value: unknown, fallback = 'n/a'): string => (finiteIn(value, 0, 1e15) === undefined ? fallback : placedText(value as number, 3))
+
+/**
+ * A JSON value as text with every number bounded as shownOf bounds it (1e308 reads "n/a", 12.3456789 reads 12.345679, a non-zero
+ * value below a millionth reads "<0.000001"): for a value a reader shows whole (a stored memory entry, a config value).
  */
 export const boundedJson = (value: unknown, space?: number): string | undefined =>
-  JSON.stringify(value, (_key, field: unknown) => (typeof field === 'number' ? (finiteIn(field, -1e15, 1e15) === undefined ? 'n/a' : placed(field)) : field), space)
+  JSON.stringify(value, (_key, field: unknown) => (typeof field !== 'number' ? field : finiteIn(field, -1e15, 1e15) === undefined ? 'n/a' : field !== 0 && Math.abs(field) < 1e-6 ? placedText(field) : placed(field)), space)
