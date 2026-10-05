@@ -172,7 +172,7 @@ function stateJson(deps: ModelToolDeps, filter: string): string {
   const now = Date.now()
   const screen = viewText({ state, nowMs: now, columns: 90, act: control.actions }, state.view).split('\n').map(line => modelLine(line, 160)).join('\n').slice(0, SCREEN_MAX)
   const words = filter.toLowerCase().split(/\s+/).filter(word => word !== '')
-  const all = paletteEntries(state, now).map(entry => ({ id: entry.id, label: modelLine(entry.label, 90) }))
+  const all = paletteEntries(state, now).filter(entry => !hasSecret(entry.id)).map(entry => ({ id: entry.id, label: modelLine(entry.label, 90) }))
   const entries = (words.length === 0 ? all : all.filter(entry => words.every(word => `${entry.id} ${entry.label}`.toLowerCase().includes(word)))).slice(0, words.length === 0 ? 60 : 40)
 
   return JSON.stringify({

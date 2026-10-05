@@ -3,7 +3,7 @@
  * INVITE_COMMAND) is masked in the scrollback itself, and a line holding any other secret shape is withheld whole. Real code
  * paths: the ruflo harness runs the INVITES row's command through a fake spawn, then callTool reads the console.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { send, termText } from '../hooks/harness'
 import type { Host } from '../hooks/host'
@@ -180,5 +180,22 @@ describe('the settle answer and control characters', () => {
     expect(answer).not.toContain(CODE.slice(6, 14))
     expect(answer).toContain('red done')
     expect(answer).not.toContain('[31m')
+  })
+})
+
+describe('palette entry ids', () => {
+  it('an entry whose id holds a secret shape is left out of console_state', async () => {
+    const { state } = await stateAfter('memory list', '[OK] nothing\n')
+    const control = { host: { invalidate: () => undefined, after: () => ({ cancel: () => undefined }) }, setView: () => undefined, open: async () => undefined, actions: deepNoop(), runner: {} }
+    const deps = { state, control } as unknown as ModelToolDeps
+    const palette = await import('../hooks/palette')
+    const key = `AKIA${'Q7XB'.repeat(4)}`
+    const real = palette.paletteEntries
+
+    vi.spyOn(palette, 'paletteEntries').mockImplementation((...args) => [...real(...args), { id: `auto-ses-resume-${key}`, label: 'resume session' } as never])
+    const answer = await callTool('console_state', { filter: 'resume session' }, deps)
+
+    expect(answer).not.toContain(key)
+    vi.restoreAllMocks()
   })
 })
