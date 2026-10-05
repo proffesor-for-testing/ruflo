@@ -42,8 +42,11 @@ export const usdOf = (value: unknown): number | undefined => finiteIn(value, 0, 
  * A field a lab reader prints as written: a string or boolean as text, a number only when finite and within ±1e15 (rounded to three
  * places, so 12.3456789 reads 12.346 and 1e308 never draws), anything else the fallback.
  */
+/** Six places: the precision the console's own config form accepts (configValueOf), and the last before String() turns to exponents. */
+const placed = (value: number): number => Math.round(value * 1e6) / 1e6
+
 export const shownOf = (value: unknown, fallback = 'n/a'): string =>
-  typeof value === 'string' || typeof value === 'boolean' ? String(value) : typeof value === 'number' ? (finiteIn(value, -1e15, 1e15) === undefined ? 'n/a' : String(Math.round(value * 1000) / 1000)) : fallback
+  typeof value === 'string' || typeof value === 'boolean' ? String(value) : typeof value === 'number' ? (finiteIn(value, -1e15, 1e15) === undefined ? 'n/a' : String(placed(value))) : fallback
 
 /** A measured amount that is never negative (a duration, a size in MB, a time in ms): within 0..1e15, three places, else `fallback`. */
 export const measureOf = (value: unknown, fallback = 'n/a'): string => (finiteIn(value, 0, 1e15) === undefined ? fallback : String(Math.round((value as number) * 1000) / 1000))
@@ -53,4 +56,4 @@ export const measureOf = (value: unknown, fallback = 'n/a'): string => (finiteIn
  * reader shows whole (a stored memory entry, a config value), so a number inside it is held like every other drawn number.
  */
 export const boundedJson = (value: unknown, space?: number): string | undefined =>
-  JSON.stringify(value, (_key, field: unknown) => (typeof field === 'number' ? (finiteIn(field, -1e15, 1e15) === undefined ? 'n/a' : Math.round(field * 1000) / 1000) : field), space)
+  JSON.stringify(value, (_key, field: unknown) => (typeof field === 'number' ? (finiteIn(field, -1e15, 1e15) === undefined ? 'n/a' : placed(field)) : field), space)

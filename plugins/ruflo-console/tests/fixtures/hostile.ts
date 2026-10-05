@@ -127,7 +127,7 @@ export function hostileStdout(text: string, n: number): string | null {
  * What a drawn line must never hold: NaN, Infinity or undefined; exponent notation (1e+308, 1e-7); a minus before a digit that is not
  * part of a date or an id (-1 runs, $-0.01); a negative percent; a long fraction (12.3456789: five or more digits after the point).
  */
-export const SWEEP = /\bNaN\b|Infinity|\bundefined\b|\de[+-]\d|(^|[\s/$(:[])-\d|-\d+%|\d\.\d{5,}/
+export const SWEEP = /\bNaN\b|Infinity|\bundefined\b|\de[+-]\d|(^|[\s/$(:[])-\d|-\d+%|\d\.\d{7,}/
 
 /**
  * A field a reader prints with its own key, as the tool wrote it (`delta: -1`, `alpha: -1, -2`, `key = -1`), or alone on its line, keeps its sign: shownOf bounds it

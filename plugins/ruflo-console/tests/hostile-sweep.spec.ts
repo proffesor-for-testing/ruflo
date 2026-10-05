@@ -303,7 +303,7 @@ describe('round 4: the readers the round-4 review found drawing raw', () => {
   it('a completed task’s result object: its numbers are bounded, a signed one keeps its key', () => {
     const task = parseTasks(JSON.stringify({ tasks: { 't-1': { taskId: 't-1', status: 'completed', result: { tests: 1e308, coverage: 12.3456789, delta: -1 } } } }))[0]
 
-    expect(task?.resultText).toBe('tests: n/a · coverage: 12.346 · delta: -1')
+    expect(task?.resultText).toBe('tests: n/a · coverage: 12.345679 · delta: -1')
     expect(isHostile(task?.resultText ?? '')).toBe(false)
   })
 })
