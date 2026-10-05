@@ -1,9 +1,10 @@
 /**
  * Auto-run's spend guard (ADR-443): a leaf module, so `advance()` in mission-control.ts can ask it without a cycle. The spend is the
  * cost ledger's reading for the mission's window and project (the `mission-cost` probe), a list-price estimate; the cap is the person's
- * own Settings value. No cap, no reading, or a reading for another mission means no pause: a missing number is never a reason to stop.
+ * own Settings value. No cap means no guard. With a cap, auto-run hands out a task only on a fresh reading for this mission: a reading
+ * older than MISSION_COST_STALE_MS (the probe stopped, or never ran) is unknown, and an unknown spend is not "below the cap".
  */
-import { capState, shouldPause, type MissionCost } from './data/mission-cost'
+import { capState, capUsd, MISSION_COST_STALE_MS, shouldPause, type MissionCost } from './data/mission-cost'
 import { live } from './views/common'
 import { settingsOf } from './settings'
 import type { MissionRecord } from './mission-types'
@@ -16,15 +17,28 @@ export function costOf(state: State, mission: MissionRecord): MissionCost | null
   return cost !== null && cost.fromMs === mission.createdAtMs ? cost : null
 }
 
-export const capOf = (state: State): number | null => {
-  const text = settingsOf(state).ai.missionCapUsd
+/** The cap in dollars, on the same 0.01 to 10000 rule as the Settings field; anything else (`0` included) is no cap, and shows as none. */
+export const capOf = (state: State): number | null => capUsd(settingsOf(state).ai.missionCapUsd)
 
-  return text === '' ? null : Number(text)
+/** What the guard knows about this mission's spend against its cap. */
+export type CapVerdict = 'no-cap' | 'below' | 'reached' | 'unknown'
+
+export function capVerdict(state: State, mission: MissionRecord, nowMs = Date.now()): CapVerdict {
+  const cap = capOf(state)
+
+  if (cap === null) return 'no-cap'
+
+  const result = state.probes.get('mission-cost')
+  const cost = result?.value as MissionCost | null | undefined
+
+  if (cost === null || cost === undefined || cost.fromMs !== mission.createdAtMs) return 'unknown'
+
+  // Spend inside a window only grows: a reading at the cap stays true however old it is.
+  if (shouldPause(capState(cost.usd, cap), true)) return 'reached'
+  if (cost.usd === null || result?.okAtMs === null || result?.okAtMs === undefined || nowMs - result.okAtMs > MISSION_COST_STALE_MS) return 'unknown'
+
+  return 'below'
 }
 
 /** True when auto-run should stop handing out tasks because this mission's spend reached its cap. */
-export function isCapReached(state: State, mission: MissionRecord): boolean {
-  const cost = costOf(state, mission)
-
-  return cost !== null && shouldPause(capState(cost.usd, capOf(state)), mission.auto)
-}
+export const isCapReached = (state: State, mission: MissionRecord): boolean => mission.auto && capVerdict(state, mission) === 'reached'

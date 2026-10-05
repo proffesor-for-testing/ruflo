@@ -160,7 +160,19 @@ export function dispatchSpec(state: State, host: Host, mission: MissionRecord, t
 
       inflight.add(task)
       host.after(15_000, () => inflight.delete(task))
-      await host.run(argvOf(state, 'task_update', { taskId: task.rufloTaskId, status: 'in_progress', progress: 5 }), 60_000)
+      const marked = await host.run(argvOf(state, 'task_update', { taskId: task.rufloTaskId, status: 'in_progress', progress: 5 }), 60_000).catch((error: unknown) => ({ exitCode: -1, stdout: '', stderr: error instanceof Error ? error.message : String(error) }))
+      const answer = resultOf(marked.stdout)
+
+      // The store still says pending: a prompt now would be handed out again once the in-flight guard lapses. Nothing is sent.
+      if (marked.exitCode !== 0 || answer?.success === false || answer?.ok === false) {
+        record(mission, { type: 'task.dispatch_failed', taskId: task.id, evidenceRef: task.rufloTaskId, note: `task_update in_progress failed (exit ${marked.exitCode}): not handed to Claude` })
+        saveLedger(state, host)
+        mcOf(state).last = { label: `task ${task.id} not handed over`, ok: false, detail: plain(`marking it in progress failed: ${marked.stderr || String(answer?.message ?? answer?.error ?? `exit ${marked.exitCode}`)}`, 140) }
+        host.invalidate()
+
+        return
+      }
+
       task.dispatchedAtMs = Date.now()
       record(mission, { type: 'task.dispatched', taskId: task.id, status: 'in_progress', evidenceRef: task.rufloTaskId })
       saveLedger(state, host)

@@ -9,6 +9,7 @@
  * exec read-only, the saved per-turn budget) and the reply streams in; nothing is changed by it.
  */
 import type { ActionSpec } from './actions'
+import { capText } from './data/mission-cost'
 import { plain } from './data/parse'
 import { RUFLO_MARKET } from './data/snapshot'
 import { DEFAULT_LOOP, LOOP_INTERVALS, type LoopPrefs, WRITER_CAPS } from './goap'
@@ -302,7 +303,7 @@ export async function loadAiPrefs(state: State, host: Host): Promise<void> {
     modelConfirm: stored?.modelConfirm === 'auto' ? 'auto' : 'ask',
     missionContext: stored?.missionContext !== false,
     loopGates: typeof stored?.loopGates === 'string' ? stored.loopGates.slice(0, 800) : '',
-    missionCapUsd: typeof stored?.missionCapUsd === 'string' && /^\d{1,5}(\.\d{1,2})?$/.test(stored.missionCapUsd) ? stored.missionCapUsd : '',
+    missionCapUsd: typeof stored?.missionCapUsd === 'string' ? (capText(stored.missionCapUsd) ?? '') : '',
     loopInterval: LOOP_INTERVALS.find(item => item === stored?.loopInterval) ?? DEFAULT_LOOP.loopInterval,
     loopWorktrees: flag('loopWorktrees', DEFAULT_LOOP.loopWorktrees),
     loopCommit: flag('loopCommit', DEFAULT_LOOP.loopCommit),

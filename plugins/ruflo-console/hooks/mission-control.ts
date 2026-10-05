@@ -9,7 +9,7 @@
  */
 import type { ActionSpec } from './actions'
 import { PHASE_NAME, plan as planOf, stageOf, type Plan, type Profile, profileOf, type Rigor, toMissionPlan } from './goap'
-import { isCapReached } from './mission-guard'
+import { capVerdict, isCapReached } from './mission-guard'
 import type { Host } from './host'
 import { plain, type TaskRecord } from './data/parse'
 import { isAvailable, MISSION_SKILLS, slashOf, GOALS_PLUGIN } from './mission-skills'
@@ -385,9 +385,44 @@ export function advance(state: State, host: Host): void {
     return
   }
 
+  // A cap the guard cannot read against (no fresh reading for this mission) holds auto-run: an unknown spend is not "below the cap".
+  // A hold, not a pause: the probe keeps reading while auto-run is on, and the next fresh reading lets it go on by itself.
+  if (capVerdict(state, mission) === 'unknown') {
+    if (mission.events.at(-1)?.type !== 'cap.unknown') {
+      record(mission, { type: 'cap.unknown', note: 'no fresh spend reading for this mission: auto-run holds until the ledger answers' })
+      mcOf(state).last = { label: 'auto-run holds: spend unknown', ok: false, detail: 'a cap is set and the cost ledger has no fresh reading for this mission' }
+      saveLedger(state, host)
+      host.invalidate()
+    }
+
+    return
+  }
+
   const task = nextTask(mission, state.snapshot?.tasks ?? [])
 
   if (task === null || isInflight(task)) return
 
+  // The task store still reads this task ready after it was handed out (or its in-progress write failed) this many times since the
+  // person last turned auto-run on or resumed: it is not taking, so stop rather than start billed turns in a loop.
+  if (attemptsOf(mission, task.id) >= AUTO_DISPATCH_LIMIT) {
+    mission.paused = true
+    record(mission, { type: 'auto.limit', taskId: task.id, status: 'paused', note: `task ${task.id} was handed out ${AUTO_DISPATCH_LIMIT} times and still reads ready: auto-run paused` })
+    mcOf(state).last = { label: `auto-run paused on task ${task.id}`, ok: false, detail: `handed out ${AUTO_DISPATCH_LIMIT} times and the task store still reads it ready; check Tasks, then Resume` }
+    saveLedger(state, host)
+    host.invalidate()
+
+    return
+  }
+
   void dispatchSpec(state, host, mission, task, text => host.submitPrompt(text)).run?.()
+}
+
+/** The most times auto-run hands out (or tries to hand out) one task before it pauses the mission. */
+export const AUTO_DISPATCH_LIMIT = 3
+
+/** Hand-outs of one task, sent or failed, since the person last turned auto-run on or resumed the mission. */
+function attemptsOf(mission: MissionRecord, taskId: string): number {
+  const since = mission.events.findLastIndex(event => event.type === 'auto.on' || event.type === 'mission.resumed')
+
+  return mission.events.slice(since + 1).filter(event => event.taskId === taskId && (event.type === 'task.dispatched' || event.type === 'task.dispatch_failed')).length
 }

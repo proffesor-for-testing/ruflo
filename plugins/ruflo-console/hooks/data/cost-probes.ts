@@ -7,7 +7,7 @@ import { activeMission } from '../mission-control'
 import { bumpKind, parseSemver } from '../updates'
 import type { State } from '../state'
 import { COST_PLUGIN, costLedgerProbe, trackerOf } from './cost-ledger'
-import { missionCostArgv, parseMissionCost, type MissionCost } from './mission-cost'
+import { MISSION_COST_EVERY_MS, missionCostArgv, parseMissionCost, type MissionCost } from './mission-cost'
 import type { Probe } from './cli'
 
 /** The first tracker release whose ledger takes the window and project filters. */
@@ -30,8 +30,11 @@ function missionCostArgs(state: State): readonly string[] | null {
   return missionCostArgv(tracker.root, mission.createdAtMs, end, state.cwd)
 }
 
+/** Auto-run's spend guard reads this probe on every refresh, whatever page is in front: while the active mission auto-runs, it keeps reading. */
+const isAutoRunning = (state: State): boolean => activeMission(state)?.auto === true
+
 export const missionCostProbe: Probe<MissionCost> = {
-  id: 'mission-cost', args: [], argvOf: missionCostArgs, views: ['missions'], everyMs: 120_000, timeoutMs: 60_000, parse: parseMissionCost,
+  id: 'mission-cost', args: [], argvOf: missionCostArgs, views: ['missions'], isWanted: isAutoRunning, everyMs: MISSION_COST_EVERY_MS, timeoutMs: 60_000, parse: parseMissionCost,
 }
 
 export const ALL_COST_PROBES = [costLedgerProbe, missionCostProbe] as const
