@@ -160,6 +160,18 @@ describe('screen coverage: prefixed keys, padding, invisible characters, more se
     for (const t of ['x\u00adAKIAIOSFODNN7EXAMPLE', 'AKIAIOSFODNN7EXAMPLE\u2460', 'ssn a\u200b123-45-6789', 'my--token=abcdefghijklmnopqrstu']) expect(screenOutbound(t), JSON.stringify(t)).toBeTruthy()
   })
 
+  test('secrets main caught stay caught when glued to a dash', () => {
+    const key = 'AIza' + 'b'.repeat(35)
+    for (const t of [`key=${key}-v2`, `${key}-prod`, `${key}--`]) expect(screenOutbound(t), t).toBe('google api key')
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTYifQ.c2lnbmF0dXJlc2ln'
+    for (const t of [`session-${jwt}`, `cookie=a-${jwt}`, `--${jwt}`]) expect(screenOutbound(t), t).toBe('jwt')
+  })
+
+  test('a mid-line "system:" at a window start is not a fake role tag', () => {
+    const line = 'the system: ok and the assistant: fine '
+    for (let pre = 0; pre < 60; pre += 7) expect(screenInbound('w'.repeat(pre) + line.repeat(1_600)), `${pre}`).toBeUndefined()
+  })
+
   test('CLI flag credentials are caught', () => {
     expect(screenOutbound('deploy --password=Sup3rS3cretPassw0rdxx')).toBe('key assignment')
     expect(screenOutbound('cli --token=abcdefghijklmnop0123456789')).toBe('key assignment')

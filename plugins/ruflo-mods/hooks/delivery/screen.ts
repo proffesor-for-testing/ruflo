@@ -1,4 +1,4 @@
-import { anyWindow, scan, windows } from '../guidance/screen'
+import { anyWindow, scanWindows, windows } from '../guidance/screen'
 
 /** Delivery origins that are the person's own or the lead's harness: never screened, so a screen cannot eat the user's prompt. */
 const TRUSTED_ORIGINS: ReadonlySet<string> = new Set(['bridge', 'coordinator', 'scheduled-trigger'])
@@ -27,16 +27,17 @@ export const isScreenedOrigin = (kind: string) => !TRUSTED_ORIGINS.has(kind)
  * Names only: the matched text is never returned. In-process, no network, no model.
  */
 export function screenInbound(text: string): string | undefined {
-  const shared = scan(text).injection[0]
-  if (shared) return shared
-  // The shared screen's windows: invisible characters cannot split a phrase past the peer rules, and padding cannot hide one.
+  // The shared screen's windows, built once: invisible characters cannot split a phrase past the peer rules, and padding cannot hide one.
   const parts = windows(text)
+  const shared = scanWindows(parts).injection[0]
+  if (shared) return shared
   return PEER_RULES.find(([, re]) => anyWindow(parts, re))?.[0]
 }
 
 /** Rule id of the first secret shape (or US social security number) in an outbound message, or undefined. */
 export function screenOutbound(text: string): string | undefined {
-  const found = scan(text)
+  const parts = windows(text)
+  const found = scanWindows(parts)
   if (found.secrets.length) return found.secrets[0]
-  return anyWindow(windows(text), SSN) ? 'us social security number' : undefined
+  return anyWindow(parts, SSN) ? 'us social security number' : undefined
 }

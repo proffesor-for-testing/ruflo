@@ -8,9 +8,10 @@ const SECRETS: readonly (readonly [string, RegExp])[] = [
   ['aws access key', /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/],
   ['github token', /\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})\b/],
   ['slack token', /\b(?:xox[abeprs]-|xapp-\d-)[A-Za-z0-9-]{10,}/],
-  ['google api key', /\bAIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])/],
+  ['google api key', /\bAIza[0-9A-Za-z_-]{35}(?:\b|(?![0-9A-Za-z_-]))/],
   ['anthropic or openai key', /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{24,}/],
-  ['jwt', /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/],
+  // One start per token run (linear on '-eyJ' repeats), at the first eyJ after a '-' or the run start.
+  ['jwt', /(?<![A-Za-z0-9_-])(?=((?:[A-Za-z0-9_]*-)*?eyJ))\1[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/],
   ['bearer token', /\bBearer\s+[A-Za-z0-9._~+/=-]{24,}/],
   // The keyword ends an _ or - separated name (GITHUB_TOKEN=, "client_secret":), optionally then _key / _access_key
   // (aws_secret_access_key =). Names that only start with it (TOKEN_URL=, MAX_TOKENS=) and all-digit values do not
@@ -61,7 +62,9 @@ function cut(clean: string): string[] {
     // \b and ^ do not see a word cut in half; a long run without whitespace is covered by the overlap.
     const ws = start === 0 ? -1 : clean.slice(start, start + 256).search(/\s/)
     const from = ws >= 0 ? start + ws + 1 : start
-    out.push(clean.slice(from, start + WINDOW))
+    // Mid-line, a window's first character is not a line start: a lead character keeps ^ from matching there.
+    const lead = ws >= 0 && clean[from - 1] !== '\n' ? '\u0001' : ''
+    out.push(lead + clean.slice(from, start + WINDOW))
     if (start + WINDOW >= clean.length) break
   }
   return out
@@ -82,8 +85,10 @@ export type Findings = { readonly secrets: readonly string[]; readonly injection
 
 const names = (rules: readonly (readonly [string, RegExp])[], parts: readonly string[]) => rules.filter(([, re]) => anyWindow(parts, re)).map(([name]) => name)
 
-/** Names of every secret shape and injection phrase found in `text`. Cost is linear in the input. */
-export function scan(text: string): Findings {
-  const parts = windows(text)
+/** Names of every secret shape and injection phrase in already-screened windows. */
+export function scanWindows(parts: readonly string[]): Findings {
   return { secrets: names(SECRETS, parts), injection: names(INJECTION, parts) }
 }
+
+/** Names of every secret shape and injection phrase found in `text`. Cost is linear in the input. */
+export const scan = (text: string): Findings => scanWindows(windows(text))
