@@ -20,8 +20,9 @@ export type Probe<T> = {
   /** An argv that depends on what is installed; null while it cannot be built, and the probe then does not run. */
   argvOf?: (state: State) => readonly string[] | null
   isOffline?: boolean
-  /** The views that draw it: a probe runs only while one of them is in front (the overview's run with the bar too). */
+  /** The views that draw it: a probe runs only while one of them is in front (the overview's run with the bar too), or while `isWanted` says so (a guard that must not read a frozen number). */
   views: readonly ViewId[]
+  isWanted?: (state: State) => boolean
   everyMs: number
   timeoutMs: number
   isNetwork?: boolean

@@ -235,8 +235,7 @@ export function createController(state: State, host: Host): Controller {
     const now = Date.now()
     const due = ALL_PROBES.filter(
       entry =>
-        (isVisible() || force) &&
-        entry.views.includes(state.view) &&
+        (((isVisible() || force) && entry.views.includes(state.view)) || entry.isWanted?.(state) === true) &&
         (!entry.isNetwork || state.options.federationNetwork) && probeReady(entry, state) &&
         (force || (state.probes.get(entry.id)?.isRunning !== true && now - (lastAttempt.get(entry.id) ?? 0) >= entry.everyMs)),
     )

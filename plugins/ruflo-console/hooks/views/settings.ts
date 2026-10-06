@@ -1,5 +1,6 @@
 import type { RenderElement } from 'claude-code'
 
+import { capText } from '../data/mission-cost'
 import { catalogOf } from '../plugin-catalog'
 import { AI_BUDGETS, CLAUDE_MODELS, CORE, DEFAULT_AI, LOOP_ROWS, pluginNames, OPTION_NOTES, SIMPLE, settingsOf, type CoreKey, type Level, type PluginConfig } from '../settings'
 import { NAV_STYLES } from '../state'
@@ -167,7 +168,8 @@ function aiItems(ctx: Ctx): Item[] {
     one('model-confirm', 'Claude control: confirm' + capFlag(aiSaved.modelConfirm, ai.modelConfirm), 'auto (the default) lets Claude’s call confirm itself, within the level above, so it runs unattended (every call is logged on Overview), except an action that reaches the network, spends or deletes: that always waits for your Yes; ask leaves each action waiting for your Yes in the console' + capNote(aiSaved.modelConfirm, ai.modelConfirm), ai.modelConfirm, ['ask', 'auto'], ai.modelConfirm !== 'auto', value => ctx.act.settings.ai({ modelConfirm: value === 'auto' ? 'auto' : 'ask' }), 'claude control confirm auto ask approve'),
     one('ctx-mission', 'Mission context in Claude’s prompt', 'the active mission and task ride in Claude’s system prompt, and change only when the task does (a changed prompt makes Claude re-read the chat)', ai.missionContext ? 'on' : 'off', ['on', 'off'], !ai.missionContext, value => ctx.act.settings.ai({ missionContext: value === 'on' }), 'mission context prompt cache claude'),
     one('loop-gates', 'Mission gates', 'your own commands a mission may run to verify a task, one per line; each asks first and shows its exact argv; no shell characters', ai.loopGates, [], ai.loopGates !== '', value => ctx.act.settings.ai({ loopGates: value.slice(0, 800) }), 'gates verify tests smoke evidence'),
-    one('mission-cap', 'Mission spend cap (USD)', 'auto-run pauses when one mission’s spend reaches this (list-price estimate; empty means no cap)', ai.missionCapUsd, [], ai.missionCapUsd !== '', value => ctx.act.settings.ai({ missionCapUsd: /^\d{1,5}(\.\d{1,2})?$/.test(value.trim()) ? value.trim() : '' }), 'mission cap budget spend cost'),
+    // 0.01 to 10000 (the budget's rule); empty clears it. Anything else, `0` included, leaves the cap as it was: never a silent "no cap".
+    one('mission-cap', 'Mission spend cap (USD)', 'auto-run pauses when one mission’s spend reaches this, 0.01 to 10000 (list-price estimate; empty means no cap)', ai.missionCapUsd, [], ai.missionCapUsd !== '', value => { const text = capText(value); if (text !== null) ctx.act.settings.ai({ missionCapUsd: text }) }, 'mission cap budget spend cost'),
     one('accept', 'Ask before each AI turn', 'always accept sends claude, codex and swarm turns straight out (read-only, plan mode, under the budget); ruflo commands still ask', ai.autoAccept ? 'always accept' : 'ask each time', ['ask each time', 'always accept'], ai.autoAccept, value => ctx.act.settings.ai({ autoAccept: value === 'always accept' }), 'confirm accept approve'),
   ]
 }

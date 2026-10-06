@@ -78,5 +78,16 @@ export function capState(spendUsd: number | null, cap: number | null): CapState 
 /** Auto-run stops at the cap, and only when auto-run is on: a warning level never pauses anything. */
 export const shouldPause = (state: CapState, autoRun: boolean): boolean => autoRun && state.level === 'HARD_STOP'
 
+/** How often the mission-cost probe reads the ledger, and how old a reading may be before the spend guard treats it as unknown. */
+export const MISSION_COST_EVERY_MS = 120_000
+export const MISSION_COST_STALE_MS = 2 * MISSION_COST_EVERY_MS
+
 /** A cap typed by the person: 0.01 to 10000 dollars, decimal digits only (same rule as the budget setter). */
 export const capUsd = (text: string): number | null => budgetAmount(text)
+
+/** The Settings text of a mission cap: '' (no cap) or a cap capUsd accepts, trimmed; null for anything else (`0` included), which leaves the cap as it was. */
+export function capText(typed: string): string | null {
+  const text = typed.trim()
+
+  return text === '' || capUsd(text) !== null ? text : null
+}

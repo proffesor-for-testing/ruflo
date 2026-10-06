@@ -5,7 +5,9 @@ import type { Plan, Profile, Rigor } from './goap'
 import type { LoopActions } from './views/mission-loop'
 
 export type LedgerTask = { id: string; title: string; phase: string; stage?: string; agent: string; requirement: string; dependsOn: string[]; rufloTaskId?: string; dispatchedAtMs?: number }
-export type LedgerEvent = { seq: number; atMs: number; type: string; taskId?: string; status?: string; evidenceRef?: string; note?: string }
+/** Who acted on a mission control: the person (a pane press, their own command) or Claude (one of its console tool calls). */
+export type ActedBy = 'person' | 'model'
+export type LedgerEvent = { seq: number; atMs: number; type: string; taskId?: string; status?: string; evidenceRef?: string; note?: string; by?: 'model' }
 export type MissionRecord = {
   id: string
   objective: string
@@ -19,6 +21,8 @@ export type MissionRecord = {
   cancelled: boolean
   auto: boolean
   createdAtMs: number
+  /** Auto-run's hand-outs per task since the person last turned it on or resumed (mission-guard.ts); saved with the ledger. */
+  handouts?: Record<string, number>
   /** The mission's loop manager state (ADR-443), validated by parseLoop where it is read. */
   loop?: unknown
 }
@@ -54,11 +58,13 @@ export type MissionActions = {
   select: (id: string) => void
   /** Hands the next ready task to the primary session (asks first: it starts a model turn). */
   next: () => void
-  pause: () => void
-  resume: () => void
+  /** `by` names who acted, decided where the press or call came in; left out, it is Claude while one of its console calls runs (state.control.viaModel). */
+  pause: (by?: ActedBy) => void
+  /** The person's resume restarts auto-run's hand-out count; Claude's does not. */
+  resume: (by?: ActedBy) => void
   cancel: () => void
-  /** Auto-run: when a task finishes and the session is idle, hand over the next ready one without asking. */
-  auto: (on: boolean) => void
+  /** Auto-run: when a task finishes and the session is idle, hand over the next ready one without asking. The person turning it on restarts the hand-out count. */
+  auto: (on: boolean, by?: ActedBy) => void
   /** Ask aside: `/btw <question>` beside the running task (run now when idle, otherwise prepared in the prompt box). */
   aside: (question: string) => void
   /** Runs a ruflo-goals skill in the main Claude UI on the goal (or the active mission's objective). */

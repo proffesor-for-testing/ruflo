@@ -9,7 +9,7 @@
  */
 import type { ActionSpec } from './actions'
 import { PHASE_NAME, plan as planOf, stageOf, type Plan, type Profile, profileOf, type Rigor, toMissionPlan } from './goap'
-import { isCapReached } from './mission-guard'
+import { capVerdict, handoutsOf, isCapReached, parseHandouts, resetHandouts } from './mission-guard'
 import type { Host } from './host'
 import { plain, type TaskRecord } from './data/parse'
 import { isAvailable, MISSION_SKILLS, slashOf, GOALS_PLUGIN } from './mission-skills'
@@ -20,7 +20,7 @@ import type { Runner } from './runner'
 import { CLI_PREFIXES, type State } from './state'
 import type { Derived, LedgerEvent, LedgerTask, McState, McTab, MissionActions, MissionRecord } from './mission-types'
 
-import { cancelSpec, createSpec, dispatchSpec, isInflight, resultOf, setPaused } from './mission-specs'
+import { actorOf, cancelSpec, createSpec, dispatchSpec, isInflight, resultOf, setPaused } from './mission-specs'
 
 export { cancelSpec, createSpec, dispatchSpec, resultOf, setPaused }
 export type { Derived, LedgerEvent, LedgerTask, McState, McTab, MissionActions, MissionRecord } from './mission-types'
@@ -138,8 +138,13 @@ export async function loadLedger(state: State, host: Host): Promise<void> {
 
     const isShaped = Array.isArray(m?.tasks) && m.tasks.every(task => typeof task?.id === 'string' && Array.isArray(task.dependsOn)) && Array.isArray(m.events)
 
-    // Auto-run never survives a restart: a new session starts by asking.
-    if (typeof m?.id === 'string' && /^msn_[a-f0-9]{24}$/.test(m.id) && isShaped) mc.missions.set(m.id, { ...m, auto: false })
+    if (typeof m?.id !== 'string' || !/^msn_[a-f0-9]{24}$/.test(m.id) || !isShaped) continue
+
+    const { handouts: storedHandouts, ...rest } = m
+    const handouts = parseHandouts(storedHandouts, m.tasks.map(task => task.id))
+
+    // Auto-run never survives a restart: a new session starts by asking. A hand-out count that is not well formed is dropped.
+    mc.missions.set(m.id, { ...rest, auto: false, ...(handouts !== undefined && { handouts }) })
   }
 
   const active = (saved as { active?: unknown }).active
@@ -305,20 +310,22 @@ export function missionActions(state: State, host: Host, runner: Runner): Missio
 
       runner.ask(dispatchSpec(state, host, mission, task, text => host.submitPrompt(text)), 'nothing to hand out')
     },
-    pause: () => setPaused(state, host, true),
-    resume: () => setPaused(state, host, false),
+    pause: by => setPaused(state, host, true, by),
+    resume: by => setPaused(state, host, false, by),
     cancel: () => {
       const mission = activeMission(state)
 
       runner.ask(mission === null ? null : cancelSpec(state, host, mission, tasksNow()), 'no active mission to cancel')
     },
-    auto: on => {
+    auto: (on, by = actorOf(state)) => {
       const mission = activeMission(state)
 
-      if (mission === null) return
+      if (mission === null || mission.auto === on) return
 
       mission.auto = on
-      record(mission, { type: on ? 'auto.on' : 'auto.off' })
+      // The person turning auto-run on is their go-ahead: the hand-out count starts again. Claude turning it on is not.
+      if (on && by === 'person') resetHandouts(mission)
+      record(mission, { type: on ? 'auto.on' : 'auto.off', ...(by === 'model' && { by: 'model' as const }) })
       saveLedger(state, host)
       host.invalidate()
     },
@@ -393,9 +400,40 @@ export function advance(state: State, host: Host): void {
     return
   }
 
+  // A cap the guard cannot read against (no fresh reading for this mission) holds auto-run: an unknown spend is not "below the cap".
+  // A hold, not a pause: the probe keeps reading while auto-run is on, and the next fresh reading lets it go on by itself.
+  if (capVerdict(state, mission) === 'unknown') {
+    if (mission.events.at(-1)?.type !== 'cap.unknown') {
+      record(mission, { type: 'cap.unknown', note: 'no fresh spend reading for this mission: auto-run holds until the ledger answers' })
+      mcOf(state).last = { label: 'auto-run holds: spend unknown', ok: false, detail: 'a cap is set and the cost ledger has no fresh reading for this mission' }
+      saveLedger(state, host)
+      host.invalidate()
+    }
+
+    return
+  }
+
   const task = nextTask(mission, state.snapshot?.tasks ?? [])
 
   if (task === null || isInflight(task)) return
 
+  // The task store still reads this task ready after it was handed out (or its in-progress write failed) this many times since the
+  // person last turned auto-run on or resumed: it is not taking, so stop rather than start billed turns in a loop.
+  if (attemptsOf(mission, task.id) >= AUTO_DISPATCH_LIMIT) {
+    mission.paused = true
+    record(mission, { type: 'auto.limit', taskId: task.id, status: 'paused', note: `task ${task.id} was handed out ${AUTO_DISPATCH_LIMIT} times and still reads ready: auto-run paused` })
+    mcOf(state).last = { label: `auto-run paused on task ${task.id}`, ok: false, detail: `handed out ${AUTO_DISPATCH_LIMIT} times and the task store still reads it ready; check Tasks, then Resume` }
+    saveLedger(state, host)
+    host.invalidate()
+
+    return
+  }
+
   void dispatchSpec(state, host, mission, task, text => host.submitPrompt(text)).run?.()
 }
+
+/** The most times auto-run hands out (or tries to hand out) one task before it pauses the mission. */
+export const AUTO_DISPATCH_LIMIT = 3
+
+/** Hand-outs of one task, sent or failed, since the person last turned auto-run on or resumed the mission (the events stay the audit trail). */
+const attemptsOf = (mission: MissionRecord, taskId: string): number => handoutsOf(mission, taskId)

@@ -4,7 +4,8 @@ import { plain, type TaskRecord } from './data/parse'
 import { stageOf, toMissionPlan, type Profile } from './goap'
 import type { Host } from './host'
 import { activeMission, instructionOf, mcOf, nextTask, record, rufloTaskOf, saveLedger } from './mission-control'
-import type { LedgerTask, MissionRecord } from './mission-types'
+import { countHandout, resetHandouts } from './mission-guard'
+import type { ActedBy, LedgerTask, MissionRecord } from './mission-types'
 import { CLI_PREFIXES, type State } from './state'
 
 const argvOf = (state: State, tool: string, params: unknown): string[] => [...CLI_PREFIXES[state.options.cli], 'mcp', 'exec', '-t', tool, '-p', JSON.stringify(params)]
@@ -158,9 +159,27 @@ export function dispatchSpec(state: State, host: Host, mission: MissionRecord, t
         return
       }
 
+      // Held until the update settles (it may take up to 60 s), and counted before it, so a slow store cannot let attempts past the limit.
       inflight.add(task)
+      record(mission, { type: 'task.dispatch_started', taskId: task.id, evidenceRef: task.rufloTaskId })
+      countHandout(mission, task.id)
+      // Saved at once: a crash while the update runs must not lose the count.
+      saveLedger(state, host)
+      const marked = await host.run(argvOf(state, 'task_update', { taskId: task.rufloTaskId, status: 'in_progress', progress: 5 }), 60_000).catch((error: unknown) => ({ exitCode: -1, stdout: '', stderr: error instanceof Error ? error.message : String(error) }))
+      const answer = resultOf(marked.stdout)
+
+      // The store still says pending: a prompt now would be handed out again once the in-flight guard lapses. Nothing is sent.
+      if (marked.exitCode !== 0 || answer?.success === false || answer?.ok === false) {
+        inflight.delete(task)
+        record(mission, { type: 'task.dispatch_failed', taskId: task.id, evidenceRef: task.rufloTaskId, note: `task_update in_progress failed (exit ${marked.exitCode}): not handed to Claude` })
+        saveLedger(state, host)
+        mcOf(state).last = { label: `task ${task.id} not handed over`, ok: false, detail: plain(`marking it in progress failed: ${marked.stderr || String(answer?.message ?? answer?.error ?? `exit ${marked.exitCode}`)}`, 140) }
+        host.invalidate()
+
+        return
+      }
+
       host.after(15_000, () => inflight.delete(task))
-      await host.run(argvOf(state, 'task_update', { taskId: task.rufloTaskId, status: 'in_progress', progress: 5 }), 60_000)
       task.dispatchedAtMs = Date.now()
       record(mission, { type: 'task.dispatched', taskId: task.id, status: 'in_progress', evidenceRef: task.rufloTaskId })
       saveLedger(state, host)
@@ -184,14 +203,23 @@ export function dispatchSpec(state: State, host: Host, mission: MissionRecord, t
   }
 }
 
+/**
+ * Who acted when the entry point did not say: Claude while one of its console calls runs. That flag stays up for the whole call (up to
+ * 90 s while a confirm settles), so an entry point that is only ever the person's (a pane press) passes 'person' itself.
+ */
+export const actorOf = (state: State): ActedBy => (state.control.viaModel ? 'model' : 'person')
+
 /** Pause or resume dispatching, kept in the ledger (a session-bound mission has no durable executor to pause). */
-export function setPaused(state: State, host: Host, paused: boolean): void {
+export function setPaused(state: State, host: Host, paused: boolean, by: ActedBy = actorOf(state)): void {
   const mission = activeMission(state)
 
-  if (mission === null || mission.cancelled) return
+  // Already so: no event, so a repeated resume cannot restart auto-run's hand-out count.
+  if (mission === null || mission.cancelled || mission.paused === paused) return
 
   mission.paused = paused
-  record(mission, { type: paused ? 'mission.paused' : 'mission.resumed', status: paused ? 'paused' : 'running' })
+  // The person resuming is their go-ahead: auto-run's hand-out count starts again. Claude resuming is not.
+  if (!paused && by === 'person') resetHandouts(mission)
+  record(mission, { type: paused ? 'mission.paused' : 'mission.resumed', status: paused ? 'paused' : 'running', ...(by === 'model' && { by: 'model' as const }) })
   mcOf(state).last = { label: paused ? 'paused: no more tasks are handed out' : 'resumed', ok: true, detail: paused ? 'a task already handed to Claude finishes first' : 'Run next hands out the next ready task' }
   saveLedger(state, host)
   host.invalidate()
