@@ -6,6 +6,8 @@
  * each tolerates any shape: what it cannot read is left out, never guessed. Nothing here keeps the hive's `hiveToken`.
  */
 
+import { countOf, dateMsOf, ratioOf, shownOf } from './bounds'
+
 /** Text longer than this is not parsed: a store that size is not one the CLI wrote, and parsing it would stall a hook. */
 export const MAX_TEXT = 4_000_000
 /** At most this many records of one kind are kept; the rest are counted, not drawn. */
@@ -38,6 +40,8 @@ export function idOf(value: unknown): string | null {
 
 export const numberOf = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? value : undefined)
 export const stringOf = (value: unknown, max = 80): string | undefined => (typeof value === 'string' && value !== '' ? plain(value, max) || undefined : undefined)
+/** A field drawn as a name, id or sentence: a string (cleaned, capped), a boolean, a whole non-negative number; anything else (-1, 1e308, {}) reads `fallback`. */
+export const labelOf = (value: unknown, max = 80, fallback = ''): string => typeof value === 'string' ? plain(value, max) : typeof value === 'boolean' ? String(value) : typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? String(value) : fallback
 export const recordOf = (value: unknown): Record<string, unknown> | null =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null
 
@@ -60,10 +64,10 @@ export const valuesOf = (value: unknown): unknown[] => {
   return record === null ? [] : Object.values(record).slice(0, MAX_RECORDS)
 }
 
-/** An ISO time to epoch milliseconds, or undefined. */
+/** An ISO time (or epoch milliseconds inside Date's range) to epoch milliseconds, or undefined. */
 export const msOf = (value: unknown): number | undefined => {
-  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
-    return value
+  if (typeof value === 'number') {
+    return dateMsOf(value)
   }
 
   const parsed = typeof value === 'string' ? Date.parse(value) : Number.NaN
@@ -165,7 +169,7 @@ export function parseSwarmStore(text: string | null): SwarmInfo | null {
         return agentId !== null ? [agentId] : []
       }),
     }
-    const maxAgents = numberOf(swarm.maxAgents)
+    const maxAgents = countOf(swarm.maxAgents)
     const strategy = stringOf(config?.strategy, 40)
     const updatedAt = stringOf(swarm.updatedAt, 40)
 
@@ -213,8 +217,8 @@ export function parseAgents(text: string | null): AgentRecord[] {
 
     const record: AgentRecord = { id, type: stringOf(agent.agentType, 40) ?? 'agent', status: stringOf(agent.status, 20) ?? 'unknown' }
     const name = stringOf(agent.name, 40)
-    const health = numberOf(agent.health)
-    const taskCount = numberOf(agent.taskCount)
+    const health = ratioOf(agent.health)
+    const taskCount = countOf(agent.taskCount)
     const createdAtMs = msOf(agent.createdAt)
 
     if (name !== undefined) record.name = name
@@ -235,7 +239,7 @@ function resultTextOf(value: unknown): string | undefined {
 
   const text = Object.entries(result)
     .slice(0, 8)
-    .flatMap(([key, v]) => (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' ? [`${plain(key, 24)}: ${plain(String(v), 160)}`] : []))
+    .flatMap(([key, v]) => (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' ? [`${plain(key, 24)}: ${plain(shownOf(v), 160)}`] : []))
     .join(' · ')
 
   return text === '' ? undefined : text.slice(0, 500)
@@ -317,7 +321,7 @@ export function parseClaims(text: string | null): ClaimRecord[] {
     const expiresAtMs = msOf(claim.expiresAt)
     const context = stringOf(claim.context, 120)
 
-    if (progress !== undefined) record.progress = Math.max(0, Math.min(100, progress))
+    if (progress !== undefined) record.progress = Math.round(Math.max(0, Math.min(100, progress)))
     if (handoffTo !== null) record.handoffTo = handoffTo
     if (claimedAtMs !== undefined) record.claimedAtMs = claimedAtMs
     if (changedAtMs !== undefined) record.changedAtMs = changedAtMs
@@ -367,7 +371,7 @@ function proposalOf(entry: unknown): Proposal | null {
   const value = valueText(proposal.value)
   const proposedBy = idOf(proposal.proposedBy)
   const proposedAtMs = msOf(proposal.proposedAt)
-  const term = numberOf(proposal.term)
+  const term = countOf(proposal.term)
   const timeoutAtMs = msOf(proposal.timeoutAt)
   const quorumPreset = stringOf(proposal.quorumPreset, 20)
 
@@ -392,12 +396,12 @@ function decisionOf(entry: unknown): Decision | null {
     id,
     type: stringOf(decision.type, 40) ?? 'proposal',
     result: stringOf(decision.result, 20) ?? 'unknown',
-    votesFor: numberOf(votes?.for) ?? 0,
-    votesAgainst: numberOf(votes?.against) ?? 0,
+    votesFor: countOf(votes?.for) ?? 0,
+    votesAgainst: countOf(votes?.against) ?? 0,
     byzantine: idsOf(decision.byzantineDetected).length,
   }
   const strategy = stringOf(decision.strategy, 20)
-  const term = numberOf(decision.term)
+  const term = countOf(decision.term)
   const decidedAtMs = msOf(decision.decidedAt)
 
   if (strategy !== undefined) out.strategy = strategy
@@ -443,7 +447,7 @@ export function parseHive(text: string | null): HiveInfo | null {
     memoryKeys: Object.keys(shared ?? {}).slice(0, 200).flatMap(key => (idOf(key) !== null ? [key] : [])),
   }
   const strategy = stringOf(hive.consensusStrategy, 30)
-  const term = numberOf(queen?.term)
+  const term = countOf(queen?.term)
   const electedAtMs = msOf(queen?.electedAt)
   const createdAtMs = msOf(hive.createdAt)
   const updatedAtMs = msOf(hive.updatedAt)

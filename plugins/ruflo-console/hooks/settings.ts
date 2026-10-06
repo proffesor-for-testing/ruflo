@@ -190,7 +190,8 @@ export function shownKeys(config: PluginConfig, level: Level): string[] {
 
   if (level === 'advanced') return keys
 
-  const simple = SIMPLE[config.name]
+  // An own key only: a plugin named `constructor` would otherwise find Object's function and throw on includes().
+  const simple = Object.hasOwn(SIMPLE, config.name) ? SIMPLE[config.name] : undefined
 
   return simple === undefined ? keys.slice(0, 4) : keys.filter(key => simple.includes(key))
 }

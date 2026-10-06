@@ -4,7 +4,7 @@
  * as `{"content":[{"type":"text","text":"<JSON>"}],"isError":…}`, so the readers unwrap that first.
  */
 import { jsonAfter } from './cli'
-import { plain, recordOf } from './parse'
+import { labelOf, plain, recordOf } from './parse'
 import { labLines } from '../mh-lab'
 
 export type DevField = 'ref' | 'path' | 'label' | 'url' | 'target' | 'query' | 'task' | 'cmd' | 'id' | 'note' | 'session' | 'send'
@@ -108,7 +108,7 @@ export function unwrap(stdout: string): { value: unknown; isError: boolean } | n
   return { value, isError: record.isError === true || inner?.success === false || (inner !== null && typeof inner.error === 'string' && Object.keys(inner).length <= 2) }
 }
 
-const list = (value: unknown): string => (Array.isArray(value) ? value.map(item => plain(String(item), 40)).join(', ') : '')
+const list = (value: unknown): string => (Array.isArray(value) ? value.map(item => labelOf(item, 40)).join(', ') : '')
 
 /** guidance_brain recommend: each matching domain with its tools and risk, then the loop's steps and their tools. */
 export function brainLines(value: unknown): string[] {
@@ -124,7 +124,7 @@ export function brainLines(value: unknown): string[] {
 
   for (const domain of domains) {
     if (domain === null) continue
-    out.push(`▸ ${plain(String(domain.name ?? domain.id ?? ''), 40)} · ${plain(String(domain.risk ?? 'n/a'), 20)} · ${plain(String(domain.authority ?? 'n/a'), 20)}`)
+    out.push(`▸ ${labelOf(domain.name ?? domain.id, 40)} · ${labelOf(domain.risk, 20, 'n/a')} · ${labelOf(domain.authority, 20, 'n/a')}`)
     out.push(`    tools: ${list(domain.registeredTools) || '(none registered)'}`)
   }
 
@@ -134,10 +134,10 @@ export function brainLines(value: unknown): string[] {
 
   for (const step of loop) {
     if (step === null) continue
-    out.push(`  ${plain(String(step.name ?? step.id ?? ''), 14).padEnd(10)} ${list(step.preferredTools) || '—'}`)
+    out.push(`  ${labelOf(step.name ?? step.id, 14).padEnd(10)} ${list(step.preferredTools) || '—'}`)
   }
 
-  for (const rule of (Array.isArray(record.guardrails) ? record.guardrails : []).slice(0, 4)) out.push(`! ${plain(String(rule), 150)}`)
+  for (const rule of (Array.isArray(record.guardrails) ? record.guardrails : []).slice(0, 4)) out.push(`! ${labelOf(rule, 150)}`)
 
   return out
 }

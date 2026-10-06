@@ -4,8 +4,9 @@
  * reads JSON. The CLI's own warnings that change the meaning of an answer (a second store it did not read, a key not
  * found) are kept, first. And the recency binning the view draws as a timeline. Pure: strings in, strings out.
  */
+import { boundedJson, countOf, finiteIn, isoOf, measureOf } from './data/bounds'
 import { jsonAfter } from './data/cli'
-import { msOf, numberOf, plain, recordOf } from './data/parse'
+import { labelOf, msOf, plain, recordOf } from './data/parse'
 import { labLines } from './mh-lab'
 
 /** An entry's value may be long: the panel scrolls (j/k), so it keeps more lines than the MetaHarness lab. */
@@ -56,15 +57,17 @@ export function wrap(text: string, width = WRAP): string[] {
   return out
 }
 
-const short = (value: unknown, max: number): string => (typeof value === 'string' ? plain(value, max) : typeof value === 'number' || typeof value === 'boolean' ? String(value) : '')
-const score = (value: unknown): string => (typeof value === 'number' && Number.isFinite(value) ? value.toFixed(3) : '  n/a')
+/** A name or a text field (namespace, key, model, note): labelOf's, so a number there is a whole id or nothing. */
+const short = (value: unknown, max: number): string => labelOf(value, max)
+/** A hit's score: a similarity or confidence is not negative here (a hit below zero is no match), and past a million it is hostile. */
+const score = (value: unknown): string => finiteIn(value, 0, 1e6)?.toFixed(3) ?? '  n/a'
 
 /** One stored entry: its name, its size and access count, then the whole value. */
 function entryLines(record: Record<string, unknown>): string[] {
   const value = record.content ?? record.value
-  const body = typeof value === 'string' ? value : JSON.stringify(value ?? null, null, 2)
-  const updated = msOf(record.updatedAt ?? record.storedAt)
-  const head = `${short(record.namespace, 40)}/${short(record.key, 128)} · ${body.length} chars · read ${numberOf(record.accessCount) ?? 'n/a'}× · ${record.hasEmbedding === true ? 'has a vector' : 'no vector'}${updated !== undefined ? ` · updated ${new Date(updated).toISOString().slice(0, 16).replace('T', ' ')}` : ''}`
+  const body = typeof value === 'string' ? value : (boundedJson(value ?? null, 2) ?? 'null')
+  const updated = isoOf(msOf(record.updatedAt ?? record.storedAt))
+  const head = `${short(record.namespace, 40)}/${short(record.key, 128)} · ${body.length} chars · read ${countOf(record.accessCount) ?? 'n/a'}× · ${record.hasEmbedding === true ? 'has a vector' : 'no vector'}${updated !== undefined ? ` · updated ${updated.slice(0, 16).replace('T', ' ')}` : ''}`
 
   return [head, ...(Array.isArray(record.tags) && record.tags.length > 0 ? [`tags: ${record.tags.map(tag => short(tag, 24)).join(', ')}`] : []), '', ...wrap(body)]
 }
@@ -72,7 +75,7 @@ function entryLines(record: Record<string, unknown>): string[] {
 /** Search hits, best first: score, where it lives, and the start of its text. */
 function hitLines(record: Record<string, unknown>, hits: unknown[]): string[] {
   const rows = hits.map(recordOf).filter((row): row is Record<string, unknown> => row !== null)
-  const head = `${rows.length} hit${rows.length === 1 ? '' : 's'}${record.searchType !== undefined ? ` · ${short(record.searchType, 20)}` : ''}${record.searchTime !== undefined ? ` · ${short(record.searchTime, 20)}` : ''}${Array.isArray(record.searchedNamespaces) ? ` · searched ${record.searchedNamespaces.map(name => short(name, 24)).join(', ')}` : ''}`
+  const head = `${rows.length} hit${rows.length === 1 ? '' : 's'}${record.searchType !== undefined ? ` · ${short(record.searchType, 20)}` : ''}${record.searchTime !== undefined ? ` · ${typeof record.searchTime === 'string' ? plain(record.searchTime, 20) : measureOf(record.searchTime)}` : ''}${Array.isArray(record.searchedNamespaces) ? ` · searched ${record.searchedNamespaces.map(name => short(name, 24)).join(', ')}` : ''}`
   const notes = [record.degraded === true ? `degraded: ${short(record.reason, 80)}` : '', short(record.note, 160)].filter(note => note !== '')
 
   if (rows.length === 0) return [head, ...notes, '(no matches)']
@@ -98,9 +101,9 @@ function listLines(rows: unknown[]): string[] {
   return [
     `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}`,
     ...entries.slice(0, 60).map(row => {
-      const at = msOf(row.updatedAt ?? row.createdAt ?? row.storedAt)
+      const at = isoOf(msOf(row.updatedAt ?? row.createdAt ?? row.storedAt))
 
-      return `${row.hasEmbedding === true ? '◆' : '◇'} ${short(row.namespace, 24)}/${short(row.key, 80)} · ${numberOf(row.size) ?? 'n/a'} B${at !== undefined ? ` · ${new Date(at).toISOString().slice(0, 16).replace('T', ' ')}` : ''}`
+      return `${row.hasEmbedding === true ? '◆' : '◇'} ${short(row.namespace, 24)}/${short(row.key, 80)} · ${countOf(row.size) ?? 'n/a'} B${at !== undefined ? ` · ${at.slice(0, 16).replace('T', ' ')}` : ''}`
     }),
   ]
 }
@@ -110,7 +113,7 @@ function controllerLines(record: Record<string, unknown>, controllers: unknown[]
   const rows = controllers.map(recordOf).filter((row): row is Record<string, unknown> => row !== null)
   const on = rows.filter(row => row.enabled === true).length
 
-  return [`AgentDB ${record.available === true ? 'available' : 'NOT available'} · ${on}/${rows.length} controllers on`, ...rows.map(row => `${row.enabled === true ? '✓' : '·'} ${short(row.name, 40)}${row.level !== undefined ? `  L${short(row.level, 4)}` : ''}`)]
+  return [`AgentDB ${record.available === true ? 'available' : 'NOT available'} · ${on}/${rows.length} controllers on`, ...rows.map(row => `${row.enabled === true ? '✓' : '·'} ${short(row.name, 40)}${row.level !== undefined ? `  L${countOf(row.level) ?? '?'}` : ''}`)]
 }
 
 /** A vector: its dimensions, norm and first values, never all 384. */
@@ -119,7 +122,8 @@ function vectorLines(record: Record<string, unknown>): string[] | null {
 
   if (vector === null) return null
 
-  const numbers = vector.filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+  // An embedding component is a small float: past a million the norm would overflow to Infinity and the head draw in exponents.
+  const numbers = vector.filter((value): value is number => finiteIn(value, -1e6, 1e6) !== undefined)
   const norm = Math.sqrt(numbers.reduce((sum, value) => sum + value * value, 0))
 
   return [`${numbers.length} dimensions · norm ${norm.toFixed(3)}${record.model !== undefined ? ` · ${short(record.model, 40)}` : ''}`, `head: ${numbers.slice(0, 8).map(value => value.toFixed(4)).join(' ')} …`]
@@ -188,9 +192,10 @@ export function sparkline(counts: readonly number[]): string {
   return counts.map(n => (n === 0 ? '·' : (SPARK[Math.max(1, Math.round((n / top) * 8))] ?? '█'))).join('')
 }
 
-/** A filled share of `width` cells: ████░░░░. */
+/** A filled share of `width` cells: ████░░░░. A negative, NaN or infinite part draws empty, never a RangeError from repeat. */
 export function gauge(part: number, whole: number, width: number): string {
-  const filled = whole <= 0 ? 0 : Math.round((Math.min(part, whole) / whole) * width)
+  const share = Number.isFinite(whole) && whole > 0 && Number.isFinite(part) ? Math.round((Math.min(part, whole) / whole) * width) : 0
+  const filled = Math.max(0, Math.min(width, share))
 
   return `${'█'.repeat(filled)}${'░'.repeat(Math.max(0, width - filled))}`
 }

@@ -75,7 +75,7 @@ function settingRows(ctx: Ctx, o: RowSpec): RenderElement[] {
   return rows
 }
 
-const simpleKeys = (config: PluginConfig): readonly string[] => SIMPLE[config.name] ?? Object.keys(config.schema).slice(0, 4)
+const simpleKeys = (config: PluginConfig): readonly string[] => (Object.hasOwn(SIMPLE, config.name) ? SIMPLE[config.name] : undefined) ?? Object.keys(config.schema).slice(0, 4)
 
 function pluginItems(ctx: Ctx, config: PluginConfig): Item[] {
   return Object.entries(config.schema).map(([key, entry]) => {
@@ -95,7 +95,7 @@ function pluginItems(ctx: Ctx, config: PluginConfig): Item[] {
         settingRows(ctx, {
           key: id,
           title: entry.title,
-          description: OPTION_NOTES[config.name]?.[key] ?? entry.description,
+          description: (Object.hasOwn(OPTION_NOTES, config.name) && Object.hasOwn(OPTION_NOTES[config.name] as object, key) ? OPTION_NOTES[config.name]?.[key] : undefined) ?? entry.description,
           current,
           isChanged,
           isSecret: entry.isSecret,

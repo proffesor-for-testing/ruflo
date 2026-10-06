@@ -7,8 +7,9 @@
  * view shows its command and the person runs it. Pure: entries and parsers only, no `$`.
  */
 import { exec, type ActionSpec } from './actions'
+import { countOf, shownOf, usdOf } from './data/bounds'
 import { jsonAfter, type AuditTrend } from './data/cli'
-import { idOf, plain, recordOf } from './data/parse'
+import { idOf, labelOf, plain, recordOf, stringOf } from './data/parse'
 import type { State } from './state'
 
 /** `read`: $0, changes nothing. `writes`: $0, writes a file or memory. `local`: minutes of local compute that writes. `spends`: may call paid models. */
@@ -112,7 +113,10 @@ export const LAB_MAX_LINES = 40
 const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info'] as const
 const SKIP = new Set(['rawStdout', 'stdout', 'durationMs', 'generatedAt', 'schema', 'system'])
 
-const scalar = (value: unknown): string | null => (value === null ? 'null' : typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? plain(String(value), 120) : null)
+const scalar = (value: unknown): string | null => (value === null ? 'null' : typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? plain(shownOf(value), 120) : null)
+
+/** A count a lab report printed: `missing` when absent, a whole non-negative number when it is one, else n/a (never -1 or 1e+308). */
+const tally = (value: unknown, missing = 'n/a'): string => (value === undefined || value === null ? missing : String(countOf(value) ?? 'n/a'))
 
 /** Any JSON as readable lines: scalars as `key: value`, short lists inline, objects indented, two levels deep. */
 function flatten(value: unknown, out: string[], depth = 0): void {
@@ -124,7 +128,7 @@ function flatten(value: unknown, out: string[], depth = 0): void {
       const one = scalar(item)
       const fields = recordOf(item)
 
-      out.push(`${pad}- ${one ?? (fields === null ? '…' : Object.entries(fields).flatMap(([key, field]) => (scalar(field) === null ? [] : [`${key} ${scalar(field)}`])).slice(0, 5).join(' · '))}`)
+      out.push(`${pad}- ${one ?? (fields === null ? '…' : Object.entries(fields).flatMap(([key, field]) => (scalar(field) === null ? [] : [`${key}: ${scalar(field)}`])).slice(0, 5).join(' · '))}`)
     }
     if (value.length > 8) out.push(`${pad}… ${value.length - 8} more`)
 
@@ -150,16 +154,16 @@ function flatten(value: unknown, out: string[], depth = 0): void {
 /** Findings as the scan reports them: the worst, a count per severity, then each one. */
 function findingLines(record: Record<string, unknown>, findings: unknown[]): string[] {
   const rows = findings.map(recordOf).filter((row): row is Record<string, unknown> => row !== null)
-  const severityOf = (row: Record<string, unknown>) => String(row.severity ?? 'info').toLowerCase()
+  const severityOf = (row: Record<string, unknown>) => labelOf(row.severity, 12, 'info').toLowerCase()
   const counts = SEVERITIES.map(level => `${level} ${rows.filter(row => severityOf(row) === level).length}`).join(' · ')
-  const out = [`worst ${plain(String(record.worst ?? 'n/a'), 20)}${record.verdict !== undefined ? ` · verdict ${plain(String(record.verdict), 20)}` : ''} · ${rows.length} finding${rows.length === 1 ? '' : 's'}`, `by severity: ${counts}`]
+  const out = [`worst ${labelOf(record.worst, 20, 'n/a')}${record.verdict !== undefined ? ` · verdict ${labelOf(record.verdict, 20)}` : ''} · ${rows.length} finding${rows.length === 1 ? '' : 's'}`, `by severity: ${counts}`]
 
-  for (const row of rows.slice(0, 12)) out.push(`[${severityOf(row)}] ${plain(String(row.title ?? row.message ?? row.id ?? ''), 140)}`)
+  for (const row of rows.slice(0, 12)) out.push(`[${severityOf(row)}] ${labelOf(row.title ?? row.message ?? row.id, 140)}`)
 
   const flags = ['secretsReachable', 'networkAccess', 'shellAccess', 'fileWrite', 'policyDefaultDeny', 'auditLog'].filter(flag => typeof record[flag] === 'boolean')
 
   if (flags.length > 0) out.push(flags.map(flag => `${flag} ${record[flag] === true ? 'yes' : 'no'}`).join(' · '))
-  if (typeof record.allowedTools === 'number') out.push(`tools allowed ${record.allowedTools} · denied ${String(record.deniedTools ?? 'n/a')}`)
+  if (typeof record.allowedTools === 'number') out.push(`tools allowed ${tally(record.allowedTools)} · denied ${tally(record.deniedTools)}`)
 
   return out
 }
@@ -167,15 +171,15 @@ function findingLines(record: Record<string, unknown>, findings: unknown[]): str
 /** A redblue run: tests, failures by severity, cost, the gates, then each compromised case. */
 function redblueLines(record: Record<string, unknown>, summary: Record<string, unknown>): string[] {
   const out = [
-    `tests ${String(summary.tests_run ?? 'n/a')} · failures ${String(summary.failures_found ?? 'n/a')} · critical ${String(summary.critical ?? 0)} · high ${String(summary.high ?? 0)} · med ${String(summary.med ?? 0)} · low ${String(summary.low ?? 0)}`,
-    `cost $${typeof summary.cost_usd === 'number' ? summary.cost_usd.toFixed(3) : 'n/a'} · gates ${record.gates_passed === true ? 'passed' : 'FAILED'} · block production ${record.should_block_production === true ? 'yes' : 'no'}`,
+    `tests ${tally(summary.tests_run)} · failures ${tally(summary.failures_found)} · critical ${tally(summary.critical, '0')} · high ${tally(summary.high, '0')} · med ${tally(summary.med, '0')} · low ${tally(summary.low, '0')}`,
+    `cost $${usdOf(summary.cost_usd)?.toFixed(3) ?? 'n/a'} · gates ${record.gates_passed === true ? 'passed' : 'FAILED'} · block production ${record.should_block_production === true ? 'yes' : 'no'}`,
   ]
 
   for (const finding of (Array.isArray(record.findings) ? record.findings : []).map(recordOf)) {
-    if (finding?.compromised === true) out.push(`✗ ${plain(String(finding.family ?? finding.testId ?? ''), 60)} (${plain(String(finding.severity ?? ''), 12)})`)
+    if (finding?.compromised === true) out.push(`✗ ${labelOf(finding.family ?? finding.testId, 60)} (${labelOf(finding.severity, 12)})`)
   }
 
-  for (const tip of (Array.isArray(record.recommendations) ? record.recommendations : []).slice(0, 3)) out.push(`→ ${plain(String(tip), 140)}`)
+  for (const tip of (Array.isArray(record.recommendations) ? record.recommendations : []).slice(0, 3)) out.push(`→ ${labelOf(tip, 140)}`)
 
   return out
 }
@@ -190,7 +194,7 @@ function summary(value: unknown): string[] {
     return value.slice(0, 20).map(item => {
       const row = recordOf(item)
 
-      return row === null ? plain(String(item), 140) : `${plain(String(row.receiptId ?? row.id ?? ''), 24)} · ${plain(String(row.decision ?? ''), 20)} · ${plain(String(row.state ?? ''), 20)}${row.signed === true ? ' · signed' : ''}`
+      return row === null ? plain(shownOf(item), 140) : `${labelOf(row.receiptId ?? row.id, 24)} · ${labelOf(row.decision, 20)} · ${labelOf(row.state, 20)}${row.signed === true ? ' · signed' : ''}`
     })
   }
 
@@ -205,19 +209,20 @@ function summary(value: unknown): string[] {
   if (record.subcommand === 'attack' && typeof record.stdout === 'string') {
     const cases = recordOf(jsonAfter(record.stdout))?.cases
 
-    return (Array.isArray(cases) ? cases : []).map(recordOf).flatMap(row => (row === null ? [] : [`${plain(String(row.family ?? ''), 32)} · ${plain(String(row.input ?? row.objective ?? ''), 120)}`]))
+    return (Array.isArray(cases) ? cases : []).map(recordOf).flatMap(row => (row === null ? [] : [`${labelOf(row.family, 32)} · ${labelOf(row.input ?? row.objective, 120)}`]))
   }
 
   if (typeof record.system === 'string') {
-    return [`${String(record.chars ?? record.system.length)} chars from ${plain(String(record.source ?? 'the genome'), 200).split('/').pop() ?? ''}`, ...record.system.split('\n').map(line => plain(line, 160))]
+    return [`${countOf(record.chars) ?? record.system.length} chars from ${labelOf(record.source, 200, 'the genome').split('/').pop() ?? ''}`, ...record.system.split('\n').map(line => plain(line, 160))]
   }
 
   const genome = recordOf(record.genome)
 
   if (genome !== null) {
+    // The genome's meta is text (id `cand-6`, parent `cand-5`, mutated `test_policy`): anything else reads n/a, never a raw number.
     const meta = recordOf(genome.meta) ?? {}
 
-    return [`valid ${record.valid === true ? 'yes' : 'NO'} · ${Array.isArray(record.errors) ? record.errors.length : 0} errors`, `genome ${String(meta.id ?? 'n/a')} (parent ${String(meta.parent ?? 'n/a')}, mutated ${String(meta.mutated ?? 'n/a')})`, `components: ${Object.keys(recordOf(genome.components) ?? {}).join(', ')}`]
+    return [`valid ${record.valid === true ? 'yes' : 'NO'} · ${Array.isArray(record.errors) ? record.errors.length : 0} errors`, `genome ${stringOf(meta.id) ?? 'n/a'} (parent ${stringOf(meta.parent) ?? 'n/a'}, mutated ${stringOf(meta.mutated, 40) ?? 'n/a'})`, `components: ${Object.keys(recordOf(genome.components) ?? {}).join(', ')}`]
   }
 
   return []

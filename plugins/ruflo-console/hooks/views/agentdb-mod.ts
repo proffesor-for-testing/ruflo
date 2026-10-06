@@ -15,7 +15,14 @@ export function agentdbModRows(ctx: Ctx): RenderElement[] {
   const snap = ctx.state.snapshot
   const mod = snap?.agentdbMod ?? null
   const installed = snap?.plugins.installed?.find(plugin => plugin.name === PLUGIN)
-  const rows: RenderElement[] = [rule(ctx, 'AgentDB mod', mod === null ? (installed === undefined ? 'not installed' : 'no session yet') : mod.recall ? 'recall on' : 'recall off')]
+  const isRefused = snap?.reads.agentdbMod === 'not-regular'
+  const rows: RenderElement[] = [rule(ctx, 'AgentDB mod', isRefused ? 'refused (not a regular file)' : mod === null ? (installed === undefined ? 'not installed' : 'no session yet') : mod.recall ? 'recall on' : 'recall off')]
+
+  if (isRefused) {
+    rows.push(text(ctx, ' .claude-flow/agentdb-mod/status.json is a link, FIFO or folder: the console does not follow it, so nothing it says is shown.', { color: THEME.warn }))
+
+    return rows
+  }
 
   if (mod === null) {
     rows.push(

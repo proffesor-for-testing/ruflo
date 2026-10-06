@@ -7,7 +7,7 @@
  * click; every change is one fixed argv on the confirm row, its cost in words beside it.
  */
 import type { ActionSpec } from './actions'
-import { readBounded, textOf, under, type ReaderFs } from './data/files'
+import { READ_MAX, readBounded, textOf, under, type ReaderFs } from './data/files'
 import { plain } from './data/parse'
 import { checkLines, checkSkillMd, inferStack, skillRefs } from './data/skill-md'
 import { AGENT_TARGETS, agentsOf, findArgv, listRepoArgv, nameInId, newNameOf, parseRepoList, restoreArgv, skillIdOf, skillNameOf, sortedFound, syncArgv, updateAllArgv, useArgv, usePromptOf, type FoundSkill, type InstalledSkill, type Scope } from './data/skills'
@@ -135,7 +135,8 @@ export const isSafeDir = (path: string): boolean => path.startsWith('/') && !pat
 
 /** Reads a SKILL.md (bounded), checks it and keeps the result as the preview; never runs it. */
 async function previewFile(state: State, fs: ReaderFs, title: string, path: string, folder: string): Promise<void> {
-  const read = await readBounded(fs, state.cache, path)
+  // A linked SKILL.md is refused (not-regular), never followed to its target.
+  const read = await readBounded(fs, state.cache, path, READ_MAX, true)
   const text = textOf(read)
 
   if (text === null) {
@@ -179,7 +180,8 @@ export async function scanProject(state: State, fs: ReaderFs): Promise<void> {
 
       if (entry.kind === 'dir' && depth > 0) await walk(path, depth - 1)
       else if (entry.kind !== 'dir' && entry.name.endsWith('.md') && (entry.size ?? 0) <= DOC_BYTES) {
-        const text = textOf(await readBounded(fs, state.cache, path))
+        // A linked agent file (listed as `other` with isLink) is refused, never followed to its target.
+        const text = textOf(await readBounded(fs, state.cache, path, DOC_BYTES, true))
 
         if (text !== null) docs.push({ path, text: text.slice(0, DOC_BYTES) })
       }
@@ -305,7 +307,8 @@ export function moreSkillActions(state: State, host: Host, runner: Runner, load:
       if (name === null) return runner.ask(null, 'type the skill’s name in the create field first')
 
       skills.authored = name
-      void readBounded(host.fs, state.cache, under(state.cwd, `${name}/SKILL.md`)).then(read => {
+      // A linked SKILL.md is refused (not-regular), never followed to its target.
+      void readBounded(host.fs, state.cache, under(state.cwd, `${name}/SKILL.md`), READ_MAX, true).then(read => {
         const text = textOf(read)
         const lines = text === null ? [`${name}/SKILL.md: ${'reason' in read ? read.reason : 'unread'} (▸ create makes it)`] : checkLines(checkSkillMd(text, name))
 

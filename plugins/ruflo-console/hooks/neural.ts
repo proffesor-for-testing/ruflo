@@ -8,7 +8,8 @@
 import type { ActionSpec } from './actions'
 import { autoSpec, tool, type AutoEntry } from './automate'
 import { EPOCHS, freeText, objectIn, parseTrain, PATTERNS, tableRows, type Pattern } from './data/automate'
-import { numberOf, plain, recordOf } from './data/parse'
+import { ratioOf } from './data/bounds'
+import { labelOf, plain, recordOf } from './data/parse'
 import { labLines } from './mh-lab'
 import type { State } from './state'
 
@@ -52,13 +53,13 @@ function routeRead(stdout: string, stderr: string): string[] {
 
   if (value === null || primary === null) return labLines('nn-route', stdout, stderr)
 
-  const confidence = numberOf(primary.confidence)
-  const out = [`→ ${plain(String(primary.type ?? 'n/a'), 30)}${confidence !== undefined ? ` · ${Math.round(confidence * 100)}%` : ''} · ${plain(String(recordOf(value.routing)?.method ?? 'n/a'), 30)}${value.matchedPattern !== undefined ? ` · pattern ${plain(String(value.matchedPattern), 30)}` : ''}`]
+  const confidence = ratioOf(primary.confidence)
+  const out = [`→ ${labelOf(primary.type, 30, 'n/a')}${confidence !== undefined ? ` · ${Math.round(confidence * 100)}%` : ''} · ${labelOf(recordOf(value.routing)?.method, 30, 'n/a')}${value.matchedPattern !== undefined ? ` · pattern ${labelOf(value.matchedPattern, 30)}` : ''}`]
 
   for (const alt of (Array.isArray(value.alternativeAgents) ? value.alternativeAgents : []).slice(0, 4).map(recordOf)) {
-    const score = numberOf(alt?.confidence ?? alt?.score)
+    const score = ratioOf(alt?.confidence ?? alt?.score)
 
-    if (alt !== null) out.push(`  or ${plain(String(alt.type ?? alt.agent ?? ''), 30)}${score !== undefined ? ` · ${Math.round(score * 100)}%` : ''}`)
+    if (alt !== null) out.push(`  or ${labelOf(alt.type ?? alt.agent, 30)}${score !== undefined ? ` · ${Math.round(score * 100)}%` : ''}`)
   }
 
   if (typeof primary.reason === 'string') out.push(plain(primary.reason, 150))

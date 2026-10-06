@@ -1,3 +1,4 @@
+import { COUNT_CEILING, MAX_DATE_MS } from './bounds'
 import { readBounded, under, type ReadCache, type ReaderFs } from './files'
 import { jsonObject, plain, recordOf } from './parse'
 
@@ -26,19 +27,22 @@ export type ModsFacts = { rows: ModRow[]; refused: number; truncated: boolean }
 export const NO_MODS: ModsFacts = { rows: [], refused: 0, truncated: false }
 
 const whole = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : null)
+/** A count held to the ceiling, or null. */
+const countIn = (v: unknown): number | null => (whole(v) === null ? null : Math.min(whole(v) as number, COUNT_CEILING))
+/** A time inside Date's range, or null: a larger one would make toISOString() throw where the detail draws it. */
+const msIn = (v: unknown): number | null => ((whole(v) ?? Number.POSITIVE_INFINITY) <= MAX_DATE_MS ? whole(v) : null)
 
 /** Most keys of a `calls` object that are summed, and the ceiling of any summed or widened count (a hostile 1e300 must not become a display value). */
 const CALLS_KEYS_MAX = 64
-const COUNT_CEILING = Number.MAX_SAFE_INTEGER
 
 /**
  * How many times a mod ran, from whichever of its three shapes the file uses: a number `calls`; a `calls` object (summed over its numeric values,
  * at most 64 of them); else `seen`, else `checked`. Anything else (array, nested object, NaN, negative, a string) is not a count: null.
  */
 export function callsOf(value: Record<string, unknown>): number | null {
-  const direct = whole(value.calls)
+  const direct = countIn(value.calls)
 
-  if (direct !== null) return Math.min(direct, COUNT_CEILING)
+  if (direct !== null) return direct
 
   const table = recordOf(value.calls)
 
@@ -50,9 +54,7 @@ export function callsOf(value: Record<string, unknown>): number | null {
     return sum
   }
 
-  const seen = whole(value.seen) ?? whole(value.checked)
-
-  return seen === null ? null : Math.min(seen, COUNT_CEILING)
+  return countIn(value.seen) ?? countIn(value.checked)
 }
 
 const SUMMARY_MAX = 120
@@ -87,9 +89,9 @@ export function parseModStatus(name: string, text: string | null, fileMs: number
     name: name.slice(0, -4),
     guard: typeof value.guard === 'boolean' ? value.guard : null,
     calls: callsOf(value),
-    blocked: whole(value.blocked) ?? 0,
-    updatedMs: whole(value.updatedMs),
-    startedMs: whole(value.startedMs),
+    blocked: countIn(value.blocked) ?? 0,
+    updatedMs: msIn(value.updatedMs),
+    startedMs: msIn(value.startedMs),
     ...(modVersionOf(value.modVersion) !== null && { modVersion: modVersionOf(value.modVersion) as string }),
     ...(plain(value.summary, SUMMARY_MAX) !== '' && { summary: plain(value.summary, SUMMARY_MAX) }),
     ...(denied !== null && { lastDenied: denied }),

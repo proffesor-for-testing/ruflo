@@ -6,7 +6,9 @@
  *
  * Config values are masked as they are parsed, so a secret never reaches the state, the result panel or a log line.
  */
-import { idOf, msOf, numberOf, plain, recordOf, stringOf } from './parse'
+import { boundedJson, countOf, finiteIn } from './bounds'
+import { closeOf } from './json-span'
+import { idOf, msOf, plain, recordOf, stringOf } from './parse'
 
 export type WorkflowRow = { id: string; name: string; status: string; steps: number; createdAtMs?: number }
 export type TemplateRow = { id: string; name: string; steps: number }
@@ -94,7 +96,7 @@ export function shownValue(key: string, value: unknown): { shown: string; isSecr
   if (isSecret) return { shown: MASK, isSecret: true }
   if (value === undefined) return { shown: 'n/a', isSecret: false }
 
-  return { shown: plain(typeof value === 'string' ? value : JSON.stringify(value) ?? String(value), 80), isSecret: false }
+  return { shown: plain(typeof value === 'string' ? value : (boundedJson(value) ?? 'n/a'), 80), isSecret: false }
 }
 
 /** A typed config value as `config_set` stores it: true/false and plain numbers keep their type, the rest is text. */
@@ -124,8 +126,9 @@ export function relPathOf(value: string): string | null {
 }
 
 /**
- * The JSON object a run printed: from the first line that opens one to the last brace. Not `jsonAfter`, which also takes
- * a line opening `[`: `hooks route` prints `[hooks] Semantic router initialized…` before its JSON.
+ * The JSON object a run printed: from the first line that opens one to the brace that closes it (closeOf, as in jsonAfter: a trailing
+ * log line holding a stray `}` is not part of it, #3789). Not `jsonAfter`, which also takes a line opening `[`: `hooks route` prints
+ * `[hooks] Semantic router initialized…` before its JSON.
  */
 export function objectIn(stdout: string): Record<string, unknown> | null {
   const text = stdout.length > 1_000_000 ? stdout.slice(0, 1_000_000) : stdout
@@ -133,8 +136,13 @@ export function objectIn(stdout: string): Record<string, unknown> | null {
 
   if (start === null) return null
 
+  const open = start.index + start[0].length - 1
+  const end = closeOf(text, open)
+
+  if (end < 0) return null
+
   try {
-    return recordOf(JSON.parse(text.slice(start.index, text.lastIndexOf('}') + 1)))
+    return recordOf(JSON.parse(text.slice(open, end + 1)))
   } catch {
     return null
   }
@@ -152,7 +160,7 @@ export function parseWorkflows(stdout: string): WorkflowRow[] | null {
     const id = idOf(row.workflowId)
     const createdAtMs = msOf(row.createdAt)
 
-    return id === null ? [] : [{ id, name: plain(row.name, 60) || id, status: stringOf(row.status, 20) ?? 'unknown', steps: numberOf(row.stepCount) ?? 0, ...(createdAtMs !== undefined && { createdAtMs }) }]
+    return id === null ? [] : [{ id, name: plain(row.name, 60) || id, status: stringOf(row.status, 20) ?? 'unknown', steps: countOf(row.stepCount) ?? 0, ...(createdAtMs !== undefined && { createdAtMs }) }]
   })
 }
 
@@ -165,7 +173,7 @@ export function parseTemplates(stdout: string): TemplateRow[] | null {
   return rows(value.templates).flatMap(row => {
     const id = idOf(row.templateId)
 
-    return id === null ? [] : [{ id, name: plain(row.name, 60) || id, steps: numberOf(row.stepCount) ?? 0 }]
+    return id === null ? [] : [{ id, name: plain(row.name, 60) || id, steps: countOf(row.stepCount) ?? 0 }]
   })
 }
 
@@ -207,12 +215,13 @@ export function parseAutopilot(stdout: string): AutopilotStatus | null {
 
   return {
     isEnabled: value.enabled,
-    iterations: numberOf(value.iterations) ?? 0,
-    maxIterations: numberOf(value.maxIterations) ?? 0,
-    timeoutMinutes: numberOf(value.timeoutMinutes) ?? 0,
-    done: numberOf(tasks?.completed) ?? 0,
-    total: numberOf(tasks?.total) ?? 0,
-    percent: numberOf(tasks?.percent) ?? 0,
+    iterations: countOf(value.iterations) ?? 0,
+    maxIterations: countOf(value.maxIterations) ?? 0,
+    timeoutMinutes: countOf(value.timeoutMinutes) ?? 0,
+    done: countOf(tasks?.completed) ?? 0,
+    total: countOf(tasks?.total) ?? 0,
+    // A share of 100, drawn whole: 1e-7 is 0%, 150 is 100%.
+    percent: Math.round(Math.min(100, countOf(tasks?.percent) ?? 0)),
     sources: (Array.isArray(value.taskSources) ? value.taskSources : []).slice(0, 6).flatMap(source => (typeof source === 'string' ? [plain(source, 24)] : [])),
   }
 }
@@ -229,21 +238,22 @@ export function tableRows(stdout: string): [string, string][] {
 /** What `neural train` printed, as one run: its loss from Final Loss (native backend) or Avg Loss (JS fallback). */
 export function parseTrain(stdout: string, atMs: number): TrainRun | null {
   const table = new Map(tableRows(stdout))
-  const epochs = Number(table.get('Epochs'))
+  const epochs = countOf(Number(table.get('Epochs')))
   const pattern = table.get('Pattern Type')
 
-  if (pattern === undefined || !Number.isFinite(epochs)) return null
+  if (pattern === undefined || epochs === undefined) return null
 
-  const loss = Number(table.get('Final Loss') ?? table.get('Avg Loss'))
-  const seconds = Number.parseFloat(table.get('Total Time') ?? '')
+  // What the CLI printed, held to what a run can report: a loss within ±1e6, a time within a week; anything else is left out.
+  const loss = finiteIn(Number(table.get('Final Loss') ?? table.get('Avg Loss')), -1e6, 1e6)
+  const seconds = finiteIn(Number.parseFloat(table.get('Total Time') ?? ''), 0, 604_800)
   const backend = table.get('Backend')
 
   return {
     pattern: plain(pattern, 20),
     epochs,
     atMs,
-    ...(Number.isFinite(loss) && { loss }),
-    ...(Number.isFinite(seconds) && { seconds }),
+    ...(loss !== undefined && { loss }),
+    ...(seconds !== undefined && { seconds }),
     ...(backend !== undefined && backend !== '' && { backend: backend.split(' ')[0] }),
   }
 }

@@ -22,7 +22,7 @@ const ROLE_GLYPH: Record<string, string> = { worker: '●', specialist: '◆', s
 const LIVE_THEME = (liveness: Liveness): { color?: string; dimColor?: boolean } =>
   liveness === 'busy' ? { color: THEME.warn } : liveness === 'idle' ? { color: THEME.info } : liveness === 'error' ? { color: THEME.bad } : { dimColor: true }
 
-const glyphOf = (member: Member): string => (member.isKnown ? (ROLE_GLYPH[member.role] ?? '●') : '○')
+const glyphOf = (member: Member): string => (member.isKnown ? (Object.hasOwn(ROLE_GLYPH, member.role) ? (ROLE_GLYPH[member.role] as string) : '●') : '○')
 const roleOf = (member: Member): Role => (member.isKnown && (member.role === 'worker' || member.role === 'specialist' || member.role === 'scout') ? member.role : 'unknown')
 
 /** The starts an empty hive offers: the palette ids `starts.ts` registers, each asking first with its exact argv. */

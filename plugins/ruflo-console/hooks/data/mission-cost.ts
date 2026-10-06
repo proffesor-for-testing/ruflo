@@ -5,9 +5,10 @@
  * and USD and Codex credits are never added together; a model without a price is listed, never counted as $0.
  */
 import { budgetAmount, ladderDollars } from '../cost'
+import { countOf, finiteIn, usdOf } from './bounds'
 import { jsonAfter } from './cli'
 import { safeInstallPath } from './cost-ledger'
-import { numberOf, plain, recordOf } from './parse'
+import { plain, recordOf } from './parse'
 
 export type MissionCost = { usd: number | null; credits: number | null; unpriced: string[]; rows: number; /** The window's start the ledger reports back: it says which mission the reading is for. */ fromMs: number | null }
 export type CapLevel = 'none' | 'OK' | 'INFO' | 'WARNING' | 'CRITICAL' | 'HARD_STOP'
@@ -45,14 +46,14 @@ export function parseMissionCost(stdout: string): MissionCost | null {
 
   if (value === null || totals === null) return null
 
-  const rows = Math.max(0, Math.floor(numberOf(value.rows) ?? 0))
-  const usd = numberOf(totals.usd)
-  const credits = numberOf(totals.credits)
+  const rows = countOf(value.rows) ?? 0
+  const usd = usdOf(totals.usd)
+  const credits = finiteIn(totals.credits, 0, 1e12)
 
   return {
     // No rows at all is a true $0; rows that are all unpriced leave the total unknown, which is not the same thing.
-    usd: usd !== undefined && usd >= 0 ? usd : rows === 0 ? 0 : null,
-    credits: credits !== undefined && credits >= 0 ? credits : null,
+    usd: usd !== undefined ? usd : rows === 0 ? 0 : null,
+    credits: credits ?? null,
     unpriced: Object.keys(recordOf(value.unpriced) ?? {}).slice(0, 10).map(name => plain(name, 50)),
     rows,
     fromMs: windowFromMs(value.window),

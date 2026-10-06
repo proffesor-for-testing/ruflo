@@ -7,6 +7,7 @@
  * parsed and validated here, and the one JSON argument is `JSON.stringify`'s. Pure: entries and parsers only, no `$`.
  */
 import type { ActionSpec } from './actions'
+import { isoOf } from './data/bounds'
 import { jsonAfter, registryProbe, rosterProbe, channelsProbe, type Channels, type Registry, type Roster } from './data/cli'
 import { plain, recordOf, stringOf } from './data/parse'
 import { envelopeOf, messageOf, shortKey, swarmProbe, workClaimsProbe, type WorkClaims } from './data/xruv'
@@ -156,7 +157,7 @@ export function xruvLines(id: string, stdout: string, stderr = '', nowMs = Date.
   } else if (id === 'x-claims') {
     const board = workClaimsProbe.parse(stdout) as WorkClaims | null
 
-    if (board !== null) out.push(board.claims.length === 0 ? 'no open claims on the board' : `${board.claims.length} claimed resources`, ...board.claims.map(claim => `${claim.resource} · ${claim.owner}${claim.from !== undefined ? ` (${claim.from})` : ''}${claim.expiresAtMs !== undefined ? ` · until ${new Date(claim.expiresAtMs).toISOString().slice(0, 16)}Z` : ''}`))
+    if (board !== null) out.push(board.claims.length === 0 ? 'no open claims on the board' : `${board.claims.length} claimed resources`, ...board.claims.map(claim => `${claim.resource} · ${claim.owner}${claim.from !== undefined ? ` (${claim.from})` : ''}${isoOf(claim.expiresAtMs) !== undefined ? ` · until ${isoOf(claim.expiresAtMs)?.slice(0, 16)}Z` : ''}`))
   } else if (id === 'x-sync' || id === 'x-read') {
     const data = recordOf(found?.data)
     const list = Array.isArray(data?.messages) ? data.messages : null

@@ -11,9 +11,10 @@
  */
 import type { ActionSpec } from './actions'
 import { MANIFEST_PATHS, OSES, parseGate, parseLedger, parsePolicyLedger, parseWitness, readEvolve, shortRef, type EvolveFiles, type Os } from './data/evolve'
+import { countOf } from './data/bounds'
 import { jsonAfter } from './data/cli'
 import type { ReadCache } from './data/files'
-import { plain, recordOf } from './data/parse'
+import { labelOf, plain, recordOf } from './data/parse'
 import type { Host } from './host'
 import { labLines, LAB_MAX_LINES, PROMOTE_COMMAND } from './mh-lab'
 import type { State } from './state'
@@ -103,7 +104,7 @@ export function evolveLines(state: State, id: string, stdout: string, stderr: st
       return [
         `ledger ${ledger.isValid ? 'VALID' : 'INVALID'} · ${count(ledger.commits, 'commit')} · head ${shortRef(ledger.head)}`,
         ...ledger.errors.map(error => `✗ ${error}`),
-        `champion ${shortRef(typeof flywheel?.activeChampionRef === 'string' ? flywheel.activeChampionRef : undefined)} · serving epoch ${String(flywheel?.servingEpoch ?? 'n/a')} · ${count(Object.keys(recordOf(flywheel?.receiptStates) ?? {}).length, 'receipt')} registered`,
+        `champion ${shortRef(typeof flywheel?.activeChampionRef === 'string' ? flywheel.activeChampionRef : undefined)} · serving epoch ${countOf(flywheel?.servingEpoch) ?? 'n/a'} · ${count(Object.keys(recordOf(flywheel?.receiptStates) ?? {}).length, 'receipt')} registered`,
       ]
     }
 
@@ -114,7 +115,7 @@ export function evolveLines(state: State, id: string, stdout: string, stderr: st
         const row = recordOf(entry)
         const state = recordOf(row?.state)
 
-        return row === null ? [] : [`${shortRef(String(row.receiptId ?? ''))} · ${plain(String(row.decision ?? 'n/a'), 12)} · ${row.signed === true ? 'signed' : 'UNSIGNED'} · ${plain(String(state?.status ?? 'unregistered'), 12)} · candidate ${shortRef(String(row.candidateId ?? ''))}`]
+        return row === null ? [] : [`${shortRef(labelOf(row.receiptId, 80))} · ${labelOf(row.decision, 12, 'n/a')} · ${row.signed === true ? 'signed' : 'UNSIGNED'} · ${labelOf(state?.status, 12, 'unregistered')} · candidate ${shortRef(labelOf(row.candidateId, 80))}`]
       })
     }
 
@@ -127,7 +128,7 @@ export function evolveLines(state: State, id: string, stdout: string, stderr: st
       return commits.slice(-30).flatMap(entry => {
         const commit = recordOf(entry)
 
-        return commit === null ? [] : [`epoch ${String(commit.servingEpoch ?? '?')} · ${shortRef(String(commit.baselineRef ?? ''))} → ${shortRef(String(commit.candidateId ?? ''))} · receipt ${shortRef(String(commit.receiptId ?? ''))} · ${plain(String(commit.proposer ?? ''), 16)}`]
+        return commit === null ? [] : [`epoch ${countOf(commit.servingEpoch) ?? '?'} · ${shortRef(labelOf(commit.baselineRef, 80))} → ${shortRef(labelOf(commit.candidateId, 80))} · receipt ${shortRef(labelOf(commit.receiptId, 80))} · ${labelOf(commit.proposer, 16)}`]
       })
     }
 
@@ -162,7 +163,7 @@ export function evolveLines(state: State, id: string, stdout: string, stderr: st
       return [
         `signature ${witness.isSignatureValid ? 'valid (hash, key and signature check)' : 'DOES NOT VERIFY'} · overall ${witness.isOk ? 'ok' : 'NOT OK'}`,
         `${witness.pass} pass · ${witness.drift} drift · ${witness.regressed} regressed · ${witness.missing} missing, against the installed CLI`,
-        ...failing.slice(0, 20).map(row => `[${plain(String(row?.status ?? ''), 10)}] ${plain(String(row?.id ?? ''), 8)} ${plain(String(row?.desc ?? ''), 60)} · ${plain(String(row?.file ?? ''), 80)}`),
+        ...failing.slice(0, 20).map(row => `[${labelOf(row?.status, 10)}] ${labelOf(row?.id, 8)} ${labelOf(row?.desc, 60)} · ${labelOf(row?.file, 80)}`),
       ]
     }
 

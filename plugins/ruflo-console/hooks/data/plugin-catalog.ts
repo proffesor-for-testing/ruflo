@@ -3,7 +3,7 @@
  * mod (function hooks) each ships, read from the clone on disk. Read-only, bounded, nothing run: a file over the cap,
  * a name that is not a plain word and a path with `..` are skipped, and every read may be refused.
  */
-import type { ReaderFs } from './files'
+import { readBounded, type ReaderFs } from './files'
 import { plain } from './parse'
 
 export type CatalogPlugin = {
@@ -109,11 +109,8 @@ export async function readDoc(fs: ReaderFs, plugin: CatalogPlugin, kind: 'skill'
   if (!NAME.test(name)) return null
 
   const path = kind === 'skill' ? `${plugin.dir}/skills/${name}/SKILL.md` : `${plugin.dir}/${kind === 'agent' ? 'agents' : 'commands'}/${name}.md`
-  const stat = await fs.stat(path).catch(() => undefined)
-
-  if (stat === undefined || (stat.size ?? 0) > DOC_BYTES) return null
-
-  const text = await fs.read(path).catch(() => null)
+  // Regular files only: the engine follows a link and would read its target, which may sit anywhere (the class #3784 closed for status.json).
+  const { text } = await readBounded(fs, new Map(), path, DOC_BYTES, true)
 
   if (text === null) return null
 

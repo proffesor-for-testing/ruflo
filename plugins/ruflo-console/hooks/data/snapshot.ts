@@ -91,7 +91,8 @@ export type Snapshot = {
   readAtMs: number
 }
 
-export type ReadStatus = 'ok' | 'missing' | 'too-large' | 'refused'
+/** `not-regular`: a path read with regularOnly that is a link, FIFO or folder, refused and never followed (ADR-450 T2). */
+export type ReadStatus = 'ok' | 'missing' | 'too-large' | 'refused' | 'not-regular'
 
 const statusOf = (read: Read): ReadStatus => (read.text !== null ? 'ok' : read.reason)
 

@@ -1,3 +1,4 @@
+import { countOf, dateMsOf } from './bounds'
 import { readBounded, under, type ReadCache, type ReaderFs } from './files'
 import { jsonObject, plain, recordOf } from './parse'
 
@@ -59,16 +60,12 @@ export type AnatoleFacts = {
 
 export const NO_ANATOLE: AnatoleFacts = { present: false, status: null, modeOverride: null, overrides: {}, alerts: [], refused: [], badAlerts: 0 }
 
-const whole = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.min(Math.floor(v), Number.MAX_SAFE_INTEGER) : 0)
+/** A count the mod reported, bounded as every other count (bounds.ts countOf: whole, non-negative, capped); anything else reads 0. */
+const whole = (v: unknown): number => countOf(v) ?? 0
 const oneOf = <T extends string>(list: readonly T[], v: unknown): T | null => list.find(item => item === v) ?? null
 const isV1 = (value: Record<string, unknown>): boolean => value.schemaVersion === 1
-const stamp = (v: unknown): number | null => {
-  if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return Math.floor(v)
-
-  const parsed = typeof v === 'string' && v.length <= 40 ? Date.parse(v) : Number.NaN
-
-  return Number.isFinite(parsed) ? parsed : null
-}
+/** A time the mod reported (epoch ms or an ISO string), held to Date's range after the epoch (bounds.ts dateMsOf), else null. */
+const stamp = (v: unknown): number | null => dateMsOf(typeof v === 'number' ? Math.floor(v) : typeof v === 'string' && v.length <= 40 ? Date.parse(v) : undefined) ?? null
 
 /** status.json, or null when it is not version 1 of an object. Counts are whole numbers, maturity is clamped to 0-100, text is cleaned and short. */
 export function parseAnatoleStatus(text: string | null): AnatoleStatus | null {
@@ -80,7 +77,7 @@ export function parseAnatoleStatus(text: string | null): AnatoleStatus | null {
   const base = recordOf(value.baseline)
   const open = { critical: whole(alerts.critical), high: whole(alerts.high), medium: whole(alerts.medium), low: whole(alerts.low), total: 0 }
 
-  open.total = Math.max(whole(alerts.open), open.critical + open.high + open.medium + open.low)
+  open.total = Math.max(whole(alerts.open), whole(open.critical + open.high + open.medium + open.low))
 
   const state = base?.state === 'mature' ? 'mature' : 'learning'
   const version = typeof value.modVersion === 'string' && /^[0-9][0-9A-Za-z.+-]{0,15}$/.test(value.modVersion) ? value.modVersion : null
