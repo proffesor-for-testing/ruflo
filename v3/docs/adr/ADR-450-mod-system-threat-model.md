@@ -185,7 +185,7 @@ Status: **fixed** (this change), **held** (attempted, no break), **open** (recom
 
 - Attack: D replaces or clears the person's waiting action, or acts after the person pressed Stop.
 - Mitigation: `console_set` and `console_run` refuse while `state.pending` is set (`model-tools.ts:274, 294`); `paused` refuses every tool (`:241`); a level change is re-read per call.
-- Result: **held**: covered by `model-tools.spec.ts` (29 tests).
+- Result: **not held** (#3815): an ask Claude raised that is screened by AIDefence first landed after its tool call returned, counted as the person's, and could replace the person's waiting card; a Yes ran whatever card was pending when it landed. **Fixed** by #3820: Claude never replaces or clears a waiting action, a Yes or Always-accept runs only the card it was pressed on, and a late ask keeps the tool call that raised it, so it is gated (level, Stop, budget, class on the card) whenever it lands, including during a later call of Claude's. Covered by `tests/deferred-asks.spec.ts`. The headless `/ruflo yes` still confirms whatever is waiting.
 
 ### T18. Denial of service by the model
 
@@ -257,7 +257,7 @@ Sections 1-8 are left as written; this section records what happened after. The 
 | T14 | Confirmation prompt shows class and level before the quoted payload | Open (not verified) | none |
 | T15 | Provenance tag on model-written memory; drop from recall unless promoted | Open (grep found no provenance marker in agentdb hooks) | none |
 | T16 | Room as a command channel | Held at review time, no change needed | n/a |
-| T17 | Pending slot and take-over | Held at review time, no change needed | n/a |
+| T17 | Pending slot and take-over | **Not held; fixed.** A screened ask of Claude's could replace the person's card and skip the gate; Claude now never replaces a waiting action, a Yes runs only its own card, and a late ask is gated by the call that raised it. The headless `/ruflo yes` still confirms whatever is waiting | #3815, #3820 (tests/deferred-asks.spec.ts) |
 | T18 | Denial of service by the model | Held for the console; the cap does not span turns (see T8's per-session budgets) | n/a |
 | T19 | `http.fetch` hook sees other plugins' requests | **Recorded, no fix**, by design of the entry. ADR-451 item 4's governor is not built. | #3737 (research), #3740 (this entry) |
 

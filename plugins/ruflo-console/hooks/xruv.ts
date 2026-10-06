@@ -233,8 +233,11 @@ function spec(state: State, id: string, base: Omit<ActionSpec, 'board' | 'lab' |
   }
 }
 
-/** A network read: the click is the consent, so it runs at once; the same argv the option's probe runs. */
-const read = (id: string, label: string, args: readonly string[], fills: string) => (state: State) => spec(state, id, { label, args, expect: 'its output on the board', isReadOnly: true, timeoutMs: 60_000 }, fills)
+/**
+ * A network read: the person's click is the consent, so it runs at once for them; the same argv the option's probe runs. For Claude it is
+ * declared `network` (ADR-444: reaching the network needs `manage`, and always waits for the person).
+ */
+const read = (id: string, label: string, args: readonly string[], fills: string) => (state: State) => spec(state, id, { label, args, expect: 'its output on the board', isReadOnly: true, declared: 'network', timeoutMs: 60_000 }, fills)
 
 const admin = (state: State, make: () => ActionSpec | null): ActionSpec | null => (state.xruv.hasAdminToken === true ? make() : null)
 const hasKey = (state: State) => state.snapshot?.hasNostrKey === true
@@ -286,7 +289,9 @@ export const XRUV: readonly XEntry[] = [
         args: exec('x_federation_channel_read', { channel, limit: 20 }),
         expect: 'its messages on the board',
         timeoutMs: 60_000,
-        // The read signs NIP-42 with your key; with none yet, the CLI would make one, so that first read asks.
+        // The read signs NIP-42 with your key; with none yet, the CLI would make one, so that first read asks. Either way it is a network
+        // action for Claude (ADR-444), signed as the person.
+        declared: 'network',
         ...(hasKey(state) ? { isReadOnly: true } : { note: `network: reads ${RELAY}; ${MAKES_KEY}` }),
       })
     },

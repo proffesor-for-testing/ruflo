@@ -6,6 +6,7 @@
  * share nothing (a conversation, setting values). A view may also offer the slash command of a ruflo plugin that fits it, when the
  * session lists that command.
  */
+import { originOf } from './control-policy'
 import { plain } from './data/parse'
 import type { Host } from './host'
 import { mcOf } from './mission-control'
@@ -138,6 +139,8 @@ export function askActions(state: State, host: Host, runner: Runner, act: () => 
   const deliver = (mode: 'visible' | 'aside', question: string | undefined, view: ViewId): void => {
     const typed = plain(question ?? '', MAX_QUESTION).trim()
     const prompt = askPrompt(state, act(), view, typed)
+    // Who asked, taken now: the screen answers after Claude's tool call has returned (ADR-450 T14), and the ask is gated as Claude's then.
+    const origin = originOf(state)
     const ask = () =>
       runner.ask(
         {
@@ -158,6 +161,7 @@ export function askActions(state: State, host: Host, runner: Runner, act: () => 
           },
         },
         'nothing to ask',
+        origin,
       )
 
     // A question the person typed is screened before a model sees it; the view's own text is the console's, not theirs.

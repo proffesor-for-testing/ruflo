@@ -426,9 +426,9 @@ export function createController(state: State, host: Host): Controller {
     host.invalidate()
     // The terminal is for typing: its field takes the keys as it opens, so letters reach it, not the pane's hotkeys.
     if (view === 'terminal') focusField('term-input')
-    // Opening the skills view is the person asking for its lists (npx skills reaches the network, so never unasked).
+    // Opening the skills view is the person asking for its lists (npx skills reaches the network, so never unasked, nor for Claude's read).
     if (view === 'skills') {
-      void listSkills(state, host)
+      if (!state.control.viaModel) void listSkills(state, host)
       focusField('skills-search')
     }
     openLoaders(state, host, view)

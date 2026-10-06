@@ -95,7 +95,7 @@ export function startSpec(id: StartId, nowMs: number, text = '', observeKey?: (p
         },
       }
     case 'channel-read':
-      return { label: 'read the pub:announce channel (network)', args: ['federation', 'channel', '--action', 'read', '--channel', 'pub:announce', '--limit', '10'], expect: 'the latest announcements', isReadOnly: true }
+      return { label: 'read the pub:announce channel (network)', args: ['federation', 'channel', '--action', 'read', '--channel', 'pub:announce', '--limit', '10'], expect: 'the latest announcements', isReadOnly: true, declared: 'network' }
     case 'marketplace':
       return {
         label: 'add the ruflo marketplace to Claude Code and install the ruflo mods (ruflo mods install: settings.local.json + claude plugin install)',
