@@ -120,13 +120,13 @@ describe('performance readers', () => {
   it('no escape or bidi character in a CLI JSON value survives into a reader line', () => {
     const state = newState({})
     const metrics = JSON.stringify({ memory: { heapUsed: 1, heapTotal: 2, rss: 3 }, cpu: {}, latency: { avgMs: 1 }, cache: { entries: `9${PAYLOAD}`, hnswEntries: 1 } })
-    const bench = JSON.stringify({ suite: `wasm${PAYLOAD}`, iterations: `100${PAYLOAD}`, totalTime: '1s', results: [] })
+    const bench = JSON.stringify({ suite: `wasm${PAYLOAD}`, iterations: `100${PAYLOAD}`, totalTime: `1s${PAYLOAD}`, results: [] })
     const report = JSON.stringify({ current: { cpu: { usage: 1, cores: `8${PAYLOAD}` }, memory: { used: 1, total: 2, heap: 3 }, latency: {} }, history: [] })
     const lines = [...metricsReader(metrics, '', state), ...benchReader(bench, '', state), ...reportReader(report, '', state)]
 
     expect(lines.filter(line => BAD.test(line)).map(line => JSON.stringify(line))).toEqual([])
-    // A name is drawn cleaned (plain); a count or a measure that arrives as text is not a number, so it reads n/a (#3822's bounds).
-    expect(lines).toContain('suite wasmLINK RTL · n/a iterations · n/a')
+    // A name and a time the CLI prints as text ("1.23s") are drawn cleaned (plain); a count that arrives as text reads n/a (#3822).
+    expect(lines.find(line => line.startsWith('suite wasmLINK RTL · n/a iterations · 1s'))).toBeDefined()
     expect(lines).toContain('embedding cache ~n/a entries · HNSW 1 entries')
   })
 })

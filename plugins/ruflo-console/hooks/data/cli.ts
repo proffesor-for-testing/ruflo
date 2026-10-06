@@ -12,7 +12,6 @@ import { researchProbe } from './research'
 import { CLI_PREFIXES, type CliChoice, type State, type ViewId } from '../state'
 
 export type { ViewId }
-
 export type Probe<T> = {
   id: string
   args: readonly string[]

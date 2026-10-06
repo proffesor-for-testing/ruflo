@@ -27,9 +27,7 @@ export const HIDDEN = new RegExp('[\\u0000-\\u001f\\u007f-\\u009f\\u00ad\\u034f\
 
 /** Plain printable text of at most `max` characters: no escape sequence, control, hidden or bidi-override character reaches the terminal. */
 export function plain(value: unknown, max = 200): string {
-  if (typeof value !== 'string') {
-    return ''
-  }
+  if (typeof value !== 'string') return ''
 
   const cleaned = value.replace(ESCAPES, '').replace(HIDDEN, ' ').replace(/\s+/g, ' ').trim()
 

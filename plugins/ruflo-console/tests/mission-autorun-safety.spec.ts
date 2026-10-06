@@ -88,6 +88,13 @@ async function claude(w: ReturnType<typeof world>, id: string, text = ''): Promi
 
 const reading = (usd: number, okAtMs: number, fromMs = 1_000) => ({ value: { usd, credits: null, unpriced: [], rows: 3, fromMs } satisfies MissionCost, okAtMs, error: null, errorAtMs: null, isRunning: false })
 const types = (mission: MissionRecord) => mission.events.map(event => event.type)
+/** Claude toggling auto-run 520 times, attributed to Claude at the actions: more events than the capped log keeps. */
+const flood = (w: ReturnType<typeof world>): void => {
+  for (let round = 0; round < 260; round++) {
+    w.actions.auto(false, 'model')
+    w.actions.auto(true, 'model')
+  }
+}
 
 describe('auto-run never re-dispatches a task whose in-progress write failed', () => {
   it('a failed task_update sends no prompt, records why, and stops after three tries', async () => {
@@ -300,13 +307,12 @@ describe('the hand-out count is kept apart from the capped event log', () => {
     expect(w.calls.prompts).toHaveLength(3)
     expect(w.mission.paused).toBe(true)
 
-    for (let round = 0; round < 260; round++) {
-      expect(await claude(w, 'mission-auto', 'off')).not.toMatch(/^Refused/)
-      expect(await claude(w, 'mission-auto', 'on')).not.toMatch(/^Refused/)
-    }
+    // Through console_run, Claude's auto-on and its resume while auto-run is on are spend actions (#3820): each waits for the person
+    // and the session budget refuses a fourth, so the flood is driven as Claude's own toggles at the actions, past the gate.
+    flood(w)
     // The dispatch events are gone from the capped log: only the counter still remembers them.
     expect(types(w.mission)).not.toContain('task.dispatch_started')
-    expect(await claude(w, 'mission-resume')).not.toMatch(/^Refused/)
+    w.actions.resume('model')
     expect(w.mission.events.at(-1)).toMatchObject({ type: 'mission.resumed', by: 'model' })
     await cycle(w, 6)
     expect(w.calls.prompts).toHaveLength(3)
@@ -351,10 +357,7 @@ describe('the hand-out count is kept apart from the capped event log', () => {
     const w = world()
 
     await cycle(w, 4)
-    for (let round = 0; round < 260; round++) {
-      await claude(w, 'mission-auto', 'off')
-      await claude(w, 'mission-auto', 'on')
-    }
+    flood(w)
     w.actions.resume()
     expect(w.mission.handouts).toEqual({})
     await cycle(w, 4)
@@ -443,14 +446,18 @@ describe('who acted is decided where the action came in, not by the flag that st
     const w = world()
 
     await cycle(w, 4)
+    // auto-off is a write: at full:auto it runs inside Claude's call, so it is Claude's.
     expect(await claude(w, 'mission-auto', 'off')).not.toMatch(/^Refused/)
-    expect(await claude(w, 'mission-auto', 'on')).not.toMatch(/^Refused/)
+    // auto-on is a spend (#3820): it waits for the person and nothing changes until they answer; here they decline.
+    expect(await claude(w, 'mission-auto', 'on')).toMatch(/^Waiting for the person/)
+    expect(w.mission.auto).toBe(false)
+    w.runner.cancel()
+    // With auto-run off, resume is a write: it runs inside Claude's call and stays Claude's.
     expect(await claude(w, 'mission-resume')).not.toMatch(/^Refused/)
-    expect(w.mission.events.slice(-3).map(event => [event.type, event.by])).toEqual([['auto.off', 'model'], ['auto.on', 'model'], ['mission.resumed', 'model']])
+    expect(w.mission.events.slice(-2).map(event => [event.type, event.by])).toEqual([['auto.off', 'model'], ['mission.resumed', 'model']])
     expect(w.mission.handouts?.t1).toBe(3)
     await cycle(w, 2)
     expect(w.calls.prompts).toHaveLength(3)
-    expect(w.mission.events.at(-1)).toMatchObject({ type: 'auto.limit' })
   })
 
   it('the hand-out count is saved as soon as it is counted, before the task_update answers', async () => {
