@@ -14,8 +14,8 @@ import { addNotice, dismissNotices } from './notices'
 import { setBootChecks } from './boot-checks'
 import { buildOf, isOurCheckout, setBuild } from './build'
 import { runUpdateCheck } from './update-flow'
-import { announceModelTools, confirmOf, levelOf, lowerOnly, parseControlEnv, serveModelTools } from './model-tools'
-import { loadAiPrefs, settingsOf } from './settings'
+import { announceModelTools, parseControlEnv, serveModelTools } from './model-tools'
+import { capAiPrefs, loadAiPrefs } from './settings'
 import { contextSection, onPromptSubmit, onTurnComplete } from './mission-claude'
 import { parseMode, RECHECK_EVERY_MS, UPDATES_KEY } from './updates'
 import { selfCheckResults } from './self-check'
@@ -212,11 +212,9 @@ export const register: Register = (on, raw: PluginOptions) => {
 
     const forced = parseControlEnv(await (async () => $.env.get('RUFLO_CONSOLE_CONTROL'))().catch(() => undefined))
 
-    // The override may only lower what the person saved (ADR-450 T12): a project's settings env must not raise Claude's control.
-    const ai = settingsOf(state).ai
-    const effective = lowerOnly({ level: levelOf(ai.modelControl), confirm: confirmOf(ai.modelConfirm) }, forced)
-
-    Object.assign(ai, { modelControl: effective.level, modelConfirm: effective.confirm })
+    // The override may only lower what the person saved (ADR-450 T12): a project's settings env must not raise Claude's control. It is kept as
+    // this session's cap, so reloading the saved preferences (opening Settings) or saving one cannot lift it.
+    capAiPrefs(state, forced)
     await announceModelTools(tool => $.tool.register(tool), state).catch(() => 0)
 
     return next(e)

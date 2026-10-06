@@ -7,6 +7,11 @@ import { describe, expect, it } from 'vitest'
 import { DEV } from '../hooks/devtools'
 import { allows, callTool, classOf, lowerOnly, parseControlEnv } from '../hooks/model-tools'
 import { setup } from './fixtures/control-setup'
+import type { Host } from '../hooks/host'
+import { AI_KEY, capAiPrefs, loadAiPrefs, saveAiPrefs, settingsOf } from '../hooks/settings'
+import { newState } from '../hooks/state'
+import type { Actions } from '../hooks/views/common'
+import { viewText } from '../hooks/views/pane'
 
 describe('what auto-confirm may never answer (ADR-450 T8)', () => {
   const ENTRIES = { read: 'mission-open', write: 'mission-create', network: 'x-publish', install: 'plugin-install', spend: 'hand-task', delete: 'mission-cancel' } as const
@@ -130,6 +135,71 @@ describe('the environment override may only lower control (ADR-450 T12)', () => 
   })
 })
 
+
+describe('the environment cap holds for the whole session, through every load and save (ADR-450 T12)', () => {
+  const host = (stored: Record<string, unknown>) => {
+    const writes: Record<string, unknown>[] = []
+    const h = {
+      storeGet: async (key: string) => stored[key],
+      storeSet: async (_key: string, value: Record<string, unknown>) => void writes.push({ ...value }),
+      invalidate: () => undefined,
+    } as unknown as Host
+
+    return { h, writes }
+  }
+
+  it('opening Settings (a reload of the saved preferences) does not lift the cap', async () => {
+    const state = newState({})
+    const { h } = host({ [AI_KEY]: { modelControl: 'full', modelConfirm: 'auto' } })
+
+    await loadAiPrefs(state, h)
+    capAiPrefs(state, parseControlEnv('read:ask'))
+    expect(settingsOf(state).ai).toMatchObject({ modelControl: 'read', modelConfirm: 'ask' })
+
+    await loadAiPrefs(state, h)
+    expect(settingsOf(state).ai).toMatchObject({ modelControl: 'read', modelConfirm: 'ask' })
+  })
+
+  it('saving any preference stores what the person saved, never the session cap, and the cap still applies', async () => {
+    const state = newState({})
+    const { h, writes } = host({ [AI_KEY]: { modelControl: 'full', modelConfirm: 'auto', budgetUsd: 1 } })
+
+    await loadAiPrefs(state, h)
+    capAiPrefs(state, parseControlEnv('read:ask'))
+    saveAiPrefs(state, h, { budgetUsd: 2 })
+    expect(writes.at(-1)).toMatchObject({ modelControl: 'full', modelConfirm: 'auto', budgetUsd: 2 })
+    expect(settingsOf(state).ai).toMatchObject({ modelControl: 'read', modelConfirm: 'ask', budgetUsd: 2 })
+
+    // The person raising it in Settings is saved, but this session stays under the cap.
+    saveAiPrefs(state, h, { modelControl: 'full' })
+    expect(settingsOf(state).ai.modelControl).toBe('read')
+    expect(writes.at(-1)).toMatchObject({ modelControl: 'full' })
+  })
+
+  it('Settings says when the session cap holds the level below what was saved', () => {
+    const state = newState({})
+    const show = () => viewText({ state, nowMs: Date.now(), columns: 160, act: {} as unknown as Actions }, 'settings')
+
+    Object.assign(settingsOf(state).aiSaved, { modelControl: 'full', modelConfirm: 'auto' })
+    settingsOf(state).query = 'claude control'
+    capAiPrefs(state, parseControlEnv('read:ask'))
+    expect(show()).toMatch(/Claude control · capped this session/)
+    expect(show()).toMatch(/Claude control: confirm · capped this session/)
+    capAiPrefs(state, null)
+    expect(show()).not.toMatch(/capped this session/)
+  })
+
+  it('without a cap the saved preferences are in force, and a saved off stays off under any cap', async () => {
+    const state = newState({})
+    const { h } = host({ [AI_KEY]: { modelControl: 'off', modelConfirm: 'auto' } })
+
+    await loadAiPrefs(state, h)
+    capAiPrefs(state, null)
+    expect(settingsOf(state).ai.modelControl).toBe('off')
+    capAiPrefs(state, parseControlEnv('full:auto'))
+    expect(settingsOf(state).ai.modelControl).toBe('off')
+  })
+})
 
 describe('session budget per action class and install as full (ADR-450 T8)', () => {
   it('classes plugin and marketplace changes as install, which needs full and always asks', async () => {
