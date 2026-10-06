@@ -3,6 +3,7 @@ import type { RenderElement } from 'claude-code'
 import { diagnose, offered, optimizerOf, metricNow, SCOPES, type Finding } from '../optimizer'
 import { slot } from './attention'
 import { clip, row, section, text, THEME, type Ctx } from './common'
+import { frameResult } from './status-card'
 
 const GLYPH = { bad: '✖', warn: '⚠', info: 'ℹ' } as const
 const COLOR = { bad: () => THEME.bad, warn: () => THEME.warn, info: () => THEME.info } as const
@@ -47,7 +48,7 @@ function resultRows(ctx: Ctx): RenderElement[] {
   for (const line of result.lines.slice(0, 14)) rows.push(text(ctx, `   ${line}`, line.startsWith('⚠') ? { color: THEME.warn } : {}))
   if (result.lines.length > 14) rows.push(text(ctx, `   … ${result.lines.length - 14} more lines: open the section that owns this command`, { dimColor: true }))
 
-  return slot(ctx, rows)
+  return slot(ctx, [frameResult(ctx, rows, result.ok ? 'ok' : 'bad')])
 }
 
 /**

@@ -54,6 +54,16 @@ export const HIVE_AGENTS = (() => {
   return JSON.stringify(store)
 })()
 
+/** Project Anatole's three files (plugins/ruflo-protector, ADR-453 §8): status, the person's rule overrides, and an alert log with one open alert. */
+export const ANATOLE_FILES: Readonly<Record<string, string>> = {
+  '.claude-flow/protector-mod/status.json': JSON.stringify({ schemaVersion: 1, modVersion: '0.1.0', mode: 'notify', calls: 40, blocked: 2, updatedMs: 4_000, summary: 'ok', alerts: { open: 3, critical: 1, high: 1, medium: 1, low: 0 }, baseline: { state: 'learning', maturity: 62, events: 120, sessions: 2 }, degraded: false }),
+  '.claude-flow/protector-mod/rules.json': JSON.stringify({ schemaVersion: 1, mode: 'notify', rules: { 'PR-002': { mode: 'notify' } } }),
+  '.claude-flow/protector-mod/alerts.jsonl': [
+    JSON.stringify({ id: 'a1', at: 3_000, rule: 'PR-002', owasp: ['T11'], severity: 'critical', action: 'blocked', tool: 'Bash', summary: 'curl piped into sh', fp: 'abcdef012345', state: 'open' }),
+    JSON.stringify({ id: 'a2', at: 3_500, rule: 'PR-007', owasp: ['LLM10'], severity: 'medium', action: 'notified', tool: 'Bash', summary: 'a long loop', fp: null, state: 'acked' }),
+  ].join('\n'),
+}
+
 /** Every project file the console reads, as captured from a real run plus the mission record, a mod's status and both agent stores. */
 export const PROJECT_FILES: Readonly<Record<string, string>> = {
   ...RUFLO_FILES,
@@ -61,6 +71,7 @@ export const PROJECT_FILES: Readonly<Record<string, string>> = {
   '.claude-flow/evil-mod/status.json': JSON.stringify({ version: 1, guard: true, calls: 3, blocked: 1, updatedMs: 2, startedMs: 1 }),
   '.claude-flow/agentdb-mod/status.json': AGENTDB_MOD_STATUS,
   '.claude-flow/agents.json': HIVE_AGENTS,
+  ...ANATOLE_FILES,
 }
 
 /** The project with every number in every JSON file (or only `only`) set to `n`, schema versions kept so every file is still read. */
@@ -74,7 +85,12 @@ export async function snapshotWith(n: number, only?: string): Promise<Snapshot> 
       try {
         out = JSON.stringify(numbers(JSON.parse(text), n))
       } catch {
-        // not JSON: kept as written
+        // JSON lines (an alert log): each line's numbers replaced; a file that is neither is kept as written.
+        try {
+          if (path.endsWith('.jsonl')) out = text.split('\n').map(line => JSON.stringify(numbers(JSON.parse(line), n))).join('\n')
+        } catch {
+          // not JSON: kept as written
+        }
       }
     }
 

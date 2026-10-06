@@ -8,15 +8,12 @@ import { rememberKey } from './remember'
 import { record } from './data/events'
 import { plain } from './data/parse'
 import type { Host } from './host'
-import { labLines } from './mh-lab'
 import { outputLines } from './ops'
 import { filterPalette, paletteEntries, textOfQuery, type PaletteEntry } from './palette'
 import { CLI_PREFIXES, type State } from './state'
+import { resultLines } from './result-lines'
 
 export const PENDING_TTL_MS = 30_000
-
-/** What a lab run's result panel shows of its output: the entry's own reader, else its line reader, else the lab's generic reading. */
-export const resultLines = (spec: ActionSpec, stdout: string, stderr: string, ok: boolean): string[] => spec.read?.(stdout, stderr, ok) ?? (spec.lines ?? ((out, err) => labLines(spec.lab ?? '', out, err)))(stdout, stderr)
 
 export type RunnerDeps = {
   /** A read of the disk that starts after this call. */

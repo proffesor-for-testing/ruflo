@@ -10,6 +10,7 @@ import type { Host } from './host'
 import { ownerLine, ownerOf } from './tool-owner'
 import { newState, PANE_ID, restore, restoreSessions, storeKeyOf, termStoreKeyOf } from './state'
 import { BAR_KEY, barView } from './views/bar'
+import { addNotice, dismissNotices } from './notices'
 import { setBootChecks } from './boot-checks'
 import { buildOf, isOurCheckout, setBuild } from './build'
 import { runUpdateCheck } from './update-flow'
@@ -306,7 +307,8 @@ export const register: Register = (on, raw: PluginOptions) => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => {
-    const show = state.options.bar === 'on' || (state.options.bar === 'auto' && state.snapshot?.isRufloProject === true)
+    const mode = state.bandMode ?? state.options.bar
+    const show = mode === 'on' || (mode === 'auto' && state.snapshot?.isRufloProject === true)
 
     if (control === null || e.props.hasSurvey || !show) {
       return next(e)
@@ -326,6 +328,13 @@ export const register: Register = (on, raw: PluginOptions) => {
     return barView(table, state, Math.floor(Number(e.props.bodyColumns) || 80), mark, () => void bound.open(false), view => {
       bound.setView(view)
       void bound.open(true)
+    }, () => {
+      dismissNotices(state)
+      try {
+        $.ui.invalidate('ui.render')
+      } catch {
+        // A refused redraw leaves the notice showing until the next one.
+      }
     })
   })
 
@@ -345,6 +354,7 @@ export const register: Register = (on, raw: PluginOptions) => {
   on('turn.start', ($, e, next) => {
     // A new turn: the per-turn cap on Claude's console actions starts over.
     state.control.turnCalls = 0
+    if (e.agentId === undefined) state.turnStartedMs = Date.now()
 
     try {
       $.ui.invalidate('ui.render')
@@ -356,6 +366,13 @@ export const register: Register = (on, raw: PluginOptions) => {
   })
 
   on('turn.complete', ($, e, next) => {
+    if (e.agentId === undefined && state.turnStartedMs !== null) {
+      // A long turn that ends while nobody watches is worth saying: the band announces it (a short one is not news).
+      const took = Date.now() - state.turnStartedMs
+
+      if (took >= 30_000) addNotice(state, { level: 'ok', text: `✓ Claude finished a turn · ${took < 60_000 ? `${Math.round(took / 1000)}s` : `${Math.floor(took / 60_000)}m ${Math.round((took % 60_000) / 1000)}s`}`, key: 'turn-done' })
+    }
+    if (e.agentId === undefined) state.turnStartedMs = null
     if (e.agentId === undefined) control?.markFrame('', false)
     if (e.agentId === undefined && host !== null) {
       try {

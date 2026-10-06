@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { objectIn, parseSessions, parseWorkflows } from '../hooks/data/automate'
+import { resultOf } from '../hooks/mission-specs'
 import { probeArgv, severityOf, versionProbe } from '../hooks/data/cli'
 import type { ReadCache, ReaderFs } from '../hooks/data/files'
 import { parseMissions } from '../hooks/data/missions'
@@ -84,6 +85,12 @@ describe('objectIn ends the JSON at its own closing brace', () => {
   it('a brace inside a string is not the close, and an object that never closes is null', () => {
     expect(objectIn('{ "note": "a } inside", "n": 1 }\ntrailing }')).toEqual({ note: 'a } inside', n: 1 })
     expect(objectIn('{ "n": 1\n')).toBeNull()
+  })
+
+  it('Mission Control reads a tool answer the same way (resultOf uses closeOf): a brace inside a goal string is not the close', () => {
+    expect(resultOf('Result:\n{ "missionId": "m-1", "goal": "fix } in parser" }\n[log] done }')).toEqual({ missionId: 'm-1', goal: 'fix } in parser' })
+    expect(resultOf('Result:\n{ "missionId": "m-1"\n')).toBeNull()
+    expect(resultOf('no object here')).toBeNull()
   })
 })
 

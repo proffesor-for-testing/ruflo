@@ -9,6 +9,7 @@ import { PROBES, probeArgv, probeError, probeReady, type ProbeResult } from './d
 import { ALL_COST_PROBES as COST_PROBES } from './data/cost-probes'
 import { X_PROBES } from './data/xruv'
 import { diffEvents, record } from './data/events'
+import { agentName, announceChanges, factsOf } from './notices'
 import { plain } from './data/parse'
 import { readSnapshot } from './data/snapshot'
 import { markPicture } from './gfx/pictures'
@@ -71,11 +72,6 @@ export function segmentOf(state: State): string | null {
   return parts.length === 0 ? null : parts.join(' · ')
 }
 
-const sorted = (values: readonly number[]) => [...values].sort((a, b) => a - b)
-
-export const median = (values: readonly number[]) => sorted(values)[Math.floor(values.length / 2)] ?? 0
-export const p95 = (values: readonly number[]) => sorted(values)[Math.min(values.length - 1, Math.floor(values.length * 0.95))] ?? 0
-
 export function createController(state: State, host: Host): Controller {
   let activityCount = 0
   let markRequest: string | null = null
@@ -135,8 +131,13 @@ export function createController(state: State, host: Host): Controller {
       const now = Date.now()
       const snapshot = await readSnapshot(host.fs, state.cache, state.cwd, state.home, settings, now, state.configDir, state.options.federationNetwork)
       if (snapshot.hasNostrKey === false) state.nostrKeyVerifiedAtMs = null
+      // What changed since the last read is announced on the band (the first read announces nothing).
+      const before = previous === null ? null : factsOf(state, now)
+
       state.snapshot = snapshot
       record(state.events, diffEvents(previous, snapshot, now))
+
+      if (before !== null) announceChanges(state, before, now)
 
       if (route !== null && route.agent !== state.ruflo.route?.agent) record(state.events, [{ atMs: now, kind: 'learning', text: `router picked ${route.agent} (${Math.round(route.confidence * 100)}%)` }])
 
@@ -487,7 +488,7 @@ export function createController(state: State, host: Host): Controller {
     push(list, { atMs: Date.now(), tool: plain(tool, 40) }, 200)
     state.toolsByAgent.set(who, list)
     if (state.toolsByAgent.size > 50) state.toolsByAgent.delete(state.toolsByAgent.keys().next().value as string)
-    record(state.events, [{ atMs: Date.now(), kind: 'tools', text: `${who === 'main' ? 'claude' : who}: ${plain(tool, 40)}` }])
+    record(state.events, [{ atMs: Date.now(), kind: 'tools', text: `${agentName(state, agentId)}: ${plain(tool, 40)}` }])
   }
 
   const closedByPerson = () => {

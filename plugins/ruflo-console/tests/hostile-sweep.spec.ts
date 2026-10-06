@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { parseAgentdbMod } from '../hooks/data/agentdb-mod'
+import { parseAlertLine, parseAnatoleStatus } from '../hooks/data/anatole'
 import { parseTrain } from '../hooks/data/automate'
 import { finiteIn, usdOf } from '../hooks/data/bounds'
 import { memoryProbe, namespacesProbe, PROBES, registryProbe, scoreProbe } from '../hooks/data/cli'
@@ -20,6 +21,7 @@ import { evolveLines } from '../hooks/evolve'
 import { memLines } from '../hooks/memory-lines'
 import { labLines } from '../hooks/mh-lab'
 import { mcOf } from '../hooks/mission-control'
+import { noticesBetween } from '../hooks/notices'
 import type { McTab } from '../hooks/mission-types'
 import { benchReader, metricsReader, reportReader } from '../hooks/perf'
 import { roomOf } from '../hooks/room'
@@ -124,6 +126,10 @@ describe('the widened sweep: files and probe answers, every view, tab and sectio
       expect(fed).toEqual(expect.arrayContaining(['memory', 'namespaces', 'metaharness', 'flywheel', 'audits', 'intelligence', 'registry']))
       expect(state.snapshot.agentdbMod).not.toBeNull()
       expect(state.snapshot.hiveAgents.length).toBeGreaterThan(0)
+      // Project Anatole's files were read and its section drawn: status, an open alert, and the section opened on Security & Doctor.
+      expect(state.snapshot.anatole?.status).not.toBeNull()
+      expect(state.snapshot.anatole?.alerts.length).toBe(2)
+      expect(['default', 'flipped'].some(way => screens.get(`secure/record/${way}`)?.includes('Open alerts')), 'Anatole section drawn open').toBe(true)
       for (const view of VIEWS) expect(screens.get(`${view.id}/record/flipped`)?.trim().length ?? 0, view.id).toBeGreaterThan(0)
     })
   }
@@ -138,6 +144,25 @@ describe('the AgentDB mod status file (ADR-445)', () => {
     expect(mod).toMatchObject({ attached: Number.MAX_SAFE_INTEGER, skipped: 0, cached: 2, lastMs: Number.MAX_SAFE_INTEGER, updatedMs: 0 })
     expect(mod?.recent.map(item => item.score)).toEqual([null, null, 0.42])
     expect(modWith({ lastMs: -5 })?.lastMs).toBeNull()
+  })
+})
+
+describe('the Project Anatole files (ADR-453)', () => {
+  const status = (patch: Record<string, unknown>) => parseAnatoleStatus(JSON.stringify({ schemaVersion: 1, mode: 'notify', calls: 1, blocked: 1, alerts: {}, ...patch }))
+
+  it('counts are bounded as countOf bounds them, a time outside Date’s range is null, and a block notice draws no hostile number', () => {
+    const hot = status({ calls: 1e308, blocked: -1, updatedMs: 1e300, alerts: { open: 1e308, critical: 1e308, high: 1e308, medium: 2.7, low: -1 }, baseline: { state: 'mature', maturity: 1e308, events: 1e-7, sessions: Number.MAX_VALUE } })
+
+    expect(hot).toMatchObject({ calls: Number.MAX_SAFE_INTEGER, blocked: 0, updatedMs: null, baseline: { maturity: 100, events: 0, sessions: Number.MAX_SAFE_INTEGER } })
+    expect(hot?.open).toMatchObject({ critical: Number.MAX_SAFE_INTEGER, medium: 2, low: 0, total: Number.MAX_SAFE_INTEGER })
+    expect(parseAlertLine(JSON.stringify({ id: 'a1', at: 1e308, rule: 'PR-001', severity: 'high', state: 'open' }))?.atMs).toBeNull()
+    expect(parseAlertLine(JSON.stringify({ id: 'a1', at: -5, rule: 'PR-001', severity: 'high', state: 'open' }))?.atMs).toBeNull()
+
+    const facts = (s: typeof hot) => ({ approvals: 0, alerts: 0, mission: null, anatole: { blocked: s?.blocked ?? 0, critical: s?.open.critical ?? 0, degraded: null } })
+    const drafts = noticesBetween(facts(status({ blocked: -1 })), facts(status({ blocked: 1e308 })), 'PR-002')
+
+    expect(drafts.map(draft => draft.text).filter(line => SWEEP.test(line))).toEqual([])
+    expect(drafts[0]?.text).toContain('Anatole blocked')
   })
 })
 

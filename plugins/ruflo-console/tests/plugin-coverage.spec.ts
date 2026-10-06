@@ -42,7 +42,7 @@ describe('plugin coverage', () => {
     expect(homeOf('ruflo-cost-tracker')).toBe('cost')
     expect(homeOf('ruflo-ruos:deploy')).toBe('swarm')
     expect(homeOf('not-a-plugin:thing')).toBeNull()
-    expect(pluginsOfView('secure')).toEqual(['ruflo-aidefence', 'ruflo-security-audit'])
+    expect(pluginsOfView('secure')).toEqual(['ruflo-aidefence', 'ruflo-protector', 'ruflo-security-audit'])
   })
 
   it('every section that owns a plugin has an ask entry (so each home can also be asked about)', async () => {

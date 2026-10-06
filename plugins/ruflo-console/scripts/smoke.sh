@@ -11,9 +11,9 @@ step() { printf "→ %s ... " "$1"; }
 ok()   { printf "PASS\n"; PASS=$((PASS+1)); }
 bad()  { printf "FAIL: %s\n" "$1"; FAIL=$((FAIL+1)); }
 
-step "1. plugin.json declares ruflo-console 0.33.20"
+step "1. plugin.json declares ruflo-console 0.33.23"
 grep -q '"name": "ruflo-console"' "$ROOT/.claude-plugin/plugin.json" \
-  && grep -q '"version": "0.33.20"' "$ROOT/.claude-plugin/plugin.json" && ok || bad "name/version"
+  && grep -q '"version": "0.33.23"' "$ROOT/.claude-plugin/plugin.json" && ok || bad "name/version"
 
 step "2. hooks.json names exactly one module and no classic hook commands"
 grep -q '"modules": \["./register.ts"\]' "$HOOKS/hooks.json" && ! grep -q '"command"' "$HOOKS/hooks.json" \
@@ -70,12 +70,13 @@ step "11. every source file is under 500 lines"
 long=$(find "$HOOKS" "$ROOT/tests" "$ROOT/scripts" -name '*.ts' -not -path '*/fixtures/ruflo-run.ts' -exec awk 'END { if (NR > 500) print FILENAME }' {} \;)
 [[ -z "$long" ]] && ok || bad "$long"
 
-step "12. kit tests are in the CI baseline (root vitest cannot resolve claude-code/testing)"
+step "12. kit tests are off the root vitest run (it cannot resolve claude-code/testing): in the CI baseline or the excluded list"
 miss=""
 for f in "$ROOT"/tests/*.test.ts; do
-  grep -qx "plugins/ruflo-console/tests/$(basename "$f")" "$REPO/scripts/ci-test-baseline.txt" || miss="$miss $(basename "$f")"
+  name="plugins/ruflo-console/tests/$(basename "$f")"
+  grep -qx "$name" "$REPO/scripts/ci-test-baseline.txt" || grep -qx "$name" "$REPO/scripts/ci-test-excluded.txt" || miss="$miss $(basename "$f")"
 done
-[[ -z "$miss" ]] && ok || bad "not in baseline:$miss"
+[[ -z "$miss" ]] && ok || bad "in neither the CI baseline nor the excluded list:$miss"
 
 step "13. marketplace lists ruflo-console"
 grep -q '"name": "ruflo-console"' "$REPO/.claude-plugin/marketplace.json" && ok || bad "missing marketplace entry"

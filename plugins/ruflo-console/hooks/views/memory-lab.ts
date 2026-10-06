@@ -2,6 +2,7 @@ import type { RenderElement } from 'claude-code'
 
 import { MEM_GROUPS, MEM_LAB, memSpecOf, textOfFields, type MemCost, type MemEntry, type MemField } from '../memory-lab'
 import { ago, button, clip, confirmHere, type Ctx, row, rule, section, tagChip, text, THEME } from './common'
+import { frameResult } from './status-card'
 
 /** Result lines in view at once; j/k scroll the rest. */
 export const MEM_ROWS = 16
@@ -112,7 +113,7 @@ function resultRows(ctx: Ctx): RenderElement[] {
   if (result === null) {
     if (running === null) rows.push(text(ctx, ' ▸ open an entry above, search, or run a lab row: reads show here at once, the rest after you confirm (y)', { dimColor: true }))
 
-    return rows
+    return [frameResult(ctx, rows, running !== null ? 'run' : 'idle')]
   }
 
   rows.push(text(ctx, ` ${result.label}`, { bold: true, color: result.ok ? THEME.ok : THEME.bad }))
@@ -132,7 +133,7 @@ function resultRows(ctx: Ctx): RenderElement[] {
     )
   }
 
-  return rows
+  return [frameResult(ctx, rows, result.ok ? 'ok' : 'bad')]
 }
 
 /**

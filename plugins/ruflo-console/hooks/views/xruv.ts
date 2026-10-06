@@ -4,6 +4,7 @@ import type { Channels, Registry, Roster } from '../data/cli'
 import type { SwarmMessages, WorkClaims } from '../data/xruv'
 import { BBS_SERVE_COMMAND, INVITE_COMMAND, UNREGISTER_WHY, XRUV, type XEntry, type XGroup } from '../xruv'
 import { ago, button, clip, col, type Ctx, kv, live, row, rule, sourceLine, tagChip, text, THEME } from './common'
+import { frameResult } from './status-card'
 
 /** Result lines in view at once; j/k scroll the rest. */
 export const XRUV_ROWS = 8
@@ -243,7 +244,7 @@ function resultRows(ctx: Ctx): RenderElement[] {
   if (result === null) {
     if (running === null) rows.push(text(ctx, ' ▸ fetch shows its answer here at once; a write shows here after you confirm (y)', { dimColor: true }))
 
-    return rows
+    return [frameResult(ctx, rows, running !== null ? 'run' : 'idle')]
   }
 
   rows.push(text(ctx, ` ${result.label}`, { bold: true, color: result.ok ? THEME.ok : THEME.bad }))
@@ -263,7 +264,7 @@ function resultRows(ctx: Ctx): RenderElement[] {
     )
   }
 
-  return rows
+  return [frameResult(ctx, rows, result.ok ? 'ok' : 'bad')]
 }
 
 /**

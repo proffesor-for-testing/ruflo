@@ -4,6 +4,7 @@ import { catalogOf, installedOf, listOf, MODES, PAGE, type Verb } from '../plugi
 import type { CatalogPlugin } from '../data/plugin-catalog'
 import { RUFLO_MARKET } from '../data/snapshot'
 import { ago, button, clip, col, kv, row, rule, section, text, THEME, type Ctx } from './common'
+import { frameResult } from './status-card'
 import { homeLink } from './links'
 
 /** The ▸ verb a row ends with: install when absent, else enable or disable. */
@@ -92,7 +93,7 @@ function lastRows(ctx: Ctx): RenderElement[] {
 
   if (last === null) return []
 
-  return [rule(ctx, 'Result', last.ok ? '✓' : '✗'), text(ctx, ` ${last.label}`, { bold: true, color: last.ok ? THEME.ok : THEME.bad }), ...last.lines.slice(0, 40).map(line => text(ctx, `   ${line}`))]
+  return [frameResult(ctx, [rule(ctx, 'Result', last.ok ? '✓' : '✗'), text(ctx, ` ${last.label}`, { bold: true, color: last.ok ? THEME.ok : THEME.bad }), ...last.lines.slice(0, 40).map(line => text(ctx, `   ${line}`))], last.ok ? 'ok' : 'bad')]
 }
 
 /**

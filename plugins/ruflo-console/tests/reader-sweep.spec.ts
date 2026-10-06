@@ -14,7 +14,7 @@ import type { ActionSpec } from '../hooks/actions'
 import { PROBES } from '../hooks/data/cli'
 import { paletteEntries, type PaletteEntry } from '../hooks/palette'
 import { roomOf } from '../hooks/room'
-import { resultLines } from '../hooks/runner'
+import { resultLines } from '../hooks/result-lines'
 import { sandboxLines } from '../hooks/sandbox'
 import { newState, VIEWS, type State } from '../hooks/state'
 import { barText } from '../hooks/views/bar'
@@ -41,6 +41,7 @@ const NO_WORKER = 'needs a registered hive worker to vote as; a vote is a write 
 const TYPES = 'types the command into the AI terminal for the person to run: its output goes to the terminal, not to a reader'
 const NA = 'never runs: the entry says n/a (no CLI verb, MCP-only, or would open a browser)'
 const RULE = 'takes text in a form no sample in TEXTS passes'
+const ANATOLE = 'Project Anatole: sends /protector through the host (runSlash), not a CLI argv, so with no host wired no spec is built; run and replay show the mod’s answer as written (textLines), and the numbers the section draws come from the mod’s files, which tests/hostile-sweep.spec.ts sweeps'
 const TEXT = 'reads the CLI’s text, not JSON (doctor’s check rows, a table, a tmux screen): it shows those lines as written, so no number of its own reaches the screen'
 
 /** Palette entries the sweep cannot build a spec for in its state, and why. The test fails if this differs from what it finds. */
@@ -132,6 +133,15 @@ const UNSWEPT: Readonly<Record<string, string>> = {
   'x-bbs-peer-add': RULE,
   'vec-rvf-ingest': RULE,
   'vec-rvf-derive': RULE,
+  'anatole-run': ANATOLE,
+  'anatole-replay': ANATOLE,
+  'anatole-mode': ANATOLE,
+  'anatole-rule': ANATOLE,
+  'anatole-ack': ANATOLE,
+  'anatole-allow': ANATOLE,
+  'anatole-reset': ANATOLE,
+  'anatole-ack-a1': `${ANATOLE} (one entry per open alert in tests/fixtures/hostile.ts)`,
+  'anatole-allow-abcdef012345': `${ANATOLE} (one entry per open alert's fingerprint)`,
   'aid-stats': TEXT,
   'sec-audit': TEXT,
   'sec-cve': TEXT,

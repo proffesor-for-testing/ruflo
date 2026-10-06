@@ -1,5 +1,6 @@
 /** The confirm-gated writes of Mission Control: create the mission and its tasks, hand a task to Claude, cancel. */
 import type { ActionSpec } from './actions'
+import { closeOf } from './data/json-span'
 import { plain, type TaskRecord } from './data/parse'
 import { stageOf, toMissionPlan, type Profile } from './goap'
 import type { Host } from './host'
@@ -9,24 +10,19 @@ import { CLI_PREFIXES, type State } from './state'
 
 const argvOf = (state: State, tool: string, params: unknown): string[] => [...CLI_PREFIXES[state.options.cli], 'mcp', 'exec', '-t', tool, '-p', JSON.stringify(params)]
 
-/** The JSON object after `Result:` in a tool run's output (the CLI logs around it), or null. */
+/** The JSON object after `Result:` in a tool run's output (the CLI logs around it), or null. It ends where closeOf says (as jsonAfter and objectIn): a brace inside a string or on a trailing log line is not its end. */
 export function resultOf(stdout: string): Record<string, unknown> | null {
   const text = stdout.replace(/\x1b\[[0-9;]*m/g, '')
   const start = text.indexOf('{', Math.max(0, text.indexOf('Result:')))
-  let depth = 0
+  const end = start < 0 ? -1 : closeOf(text, start)
 
-  for (let i = start; i >= 0 && i < text.length; i++) {
-    if (text[i] === '{') depth++
-    else if (text[i] === '}' && --depth === 0) {
-      try {
-        return JSON.parse(text.slice(start, i + 1)) as Record<string, unknown>
-      } catch {
-        return null
-      }
-    }
+  if (end < 0) return null
+
+  try {
+    return JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>
+  } catch {
+    return null
   }
-
-  return null
 }
 
 const taskType = (profile: Profile) => (profile === 'bugfix' ? 'bugfix' : profile === 'refactor' ? 'refactor' : profile === 'research' ? 'research' : 'feature')

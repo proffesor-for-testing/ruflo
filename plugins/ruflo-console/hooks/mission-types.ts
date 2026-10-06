@@ -42,7 +42,7 @@ export type McState = {
   /** AIDefence's verdict on the goal (null: not screened yet or the screen is off), and whether the screen is on. */
   screen: Screen | null
   isScreenOn: boolean
-  last: { label: string; ok: boolean; detail: string } | null
+  last: { label: string; ok: boolean; detail: string; atMs?: number; next?: string } | null
 }
 
 export type MissionActions = {
