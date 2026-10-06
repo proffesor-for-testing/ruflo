@@ -11,6 +11,7 @@ export const MORE_TOPICS: readonly HelpTopic[] = [
       { text: 'Run a quick scan of the code. It is local and read-only.', go: { run: 'sec-scan-quick' } },
       { text: 'Look for secrets in the tree. Only the file and type show, never the value.', go: { run: 'sec-secrets' } },
       { text: 'Open Security & Doctor (key u). Paste any text to have AIDefence check it for injection and PII.', go: { view: 'secure' } },
+      { text: 'Project Anatole (optional, ruflo-protector) lists its rules, alerts and mode on the same page; changes ask first, and enforce and reset-baseline ask hardest.', go: { view: 'secure' } },
       { text: 'Send the findings to Claude with one button, and ask it what to fix first.' },
       { text: 'Add a sentry to scan again on a schedule, or when files change. The fix sentry works in its own branch and never pushes.' },
     ],

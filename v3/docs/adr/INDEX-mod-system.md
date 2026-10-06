@@ -1,4 +1,4 @@
-# Index: the mod-system ADRs (404 to 452)
+# Index: the mod-system ADRs (404 to 453)
 
 Checked 2026-10-05 against `main` at 6c7b6e889. "PR" is the merged pull request that added the ADR file (found with `gh api repos/ruvnet/ruflo/commits/<sha>/pulls`); "Shipped in" is the version the ADR's own status line names, confirmed against the `version` in the plugin's `plugin.json` at the commit that added the ADR or its code. "Tests" are test files the ADR names or that the commit implementing it added (console tests are in `plugins/ruflo-console/tests/`, `.spec.ts` unless noted). `—` means the ADR does not say. `node scripts/check-adr-links.mjs` checks the links, the relation lines and the numbering of the 4xx files.
 
@@ -17,6 +17,7 @@ Two files carry the number 430 (the menu's accents, and the menu-design amendmen
 | 450 | Threat model of the mod system | Proposed (T1 part, T6, T8, T12 done; T19 recorded; T9 and default confirm await a human) | 10-05 (see note) | 404, 444, 445, 446, 447, 448; related 449, 451, 452 | — | merged: #3717 (console 0.33.3: T1 truthful classes incl. dt-term-exec, T3 plain()); T8+T12 in #3720 (0.33.4), T8 install class in #3730 (0.33.5); T6 guards #3727, #3734, #3745, #3764; T19 (`http.fetch` read path, recorded without a fix) in #3740 | ruflo-console `threat-model.spec.ts`, `control-guards.spec.ts` | `threat-model.spec.ts`, `threat.test.ts` |
 | 451 | Mod capability roadmap | Proposed (items 1–3, 5–7 shipped, all default off; 4, 8, 9, 10 not built) | 10-04 | 404, 445, 446, 447; related 449, 450, 452 | — | #3716 (ADR + `toolHints`, 0.3.0); `agentTrim` item 2 (0.3.1, `33a60c715`); `deliveryScreen` item 3 (0.3.3, `cd01a4aea`); `capabilityProbe` item 5 #3763 (0.3.7); `sessionRollup` item 6 #3766 (0.3.8); `compactCarry` item 7 #3768 (0.3.9); agentTrim live fixes #3733 and measurement #3760; fixes 0.3.2, 0.3.4 | ruflo-mods 0.3.9 | `describe`, `agents`, `delivery`, `probe`, `rollup`, `compact` tests |
 | 452 | Mod-system overnight hardening: findings, changes, open items | Accepted (record) | 10-05 | 404, 444, 445, 446, 450, 451 | — | #3735; records #3706, #3711, #3713, #3714, #3715, #3717, #3719, #3727, #3732, #3733, #3734 (all merged) | no code of its own | `probe-mod-guards`, `sync-mod-screen --check` |
+| 453 | Project Anatole: an optional, learning watchdog for unattended agents | Proposed | 10-05 | 404, 444, 445, 446, 450, 451, 452; related 449 | — | this PR (ADR only) | not built | — |
 
 ## Console: mission control and Claude control
 

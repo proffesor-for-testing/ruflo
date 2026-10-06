@@ -13,6 +13,7 @@ import { labLines } from './mh-lab'
 import { outputLines } from './ops'
 import { filterPalette, paletteEntries, textOfQuery, type PaletteEntry } from './palette'
 import { CLI_PREFIXES, type Pending, type State } from './state'
+import { prettyLines } from './result-lines'
 
 export const PENDING_TTL_MS = 30_000
 
@@ -79,7 +80,7 @@ export function createRunner(state: State, host: Host, deps: RunnerDeps): Runner
 
       // A lab run's output goes to the lab's result panel, scrolled from its top; the footer keeps the one-line outcome.
       if (spec.lab !== undefined) {
-        panel.result = { id: spec.lab, label: spec.label, ok, exitCode: result.exitCode, ...(spec.note !== undefined && { note: spec.note }), lines: spec.read?.(result.stdout, result.stderr, ok) ?? (spec.lines ?? ((out, err) => labLines(spec.lab ?? '', out, err)))(result.stdout, result.stderr), atMs: Date.now() }
+        panel.result = { id: spec.lab, label: spec.label, ok, exitCode: result.exitCode, ...(spec.note !== undefined && { note: spec.note }), lines: prettyLines(spec.read?.(result.stdout, result.stderr, ok) ?? (spec.lines ?? ((out, err) => labLines(spec.lab ?? '', out, err)))(result.stdout, result.stderr)), atMs: Date.now() }
         state.select.item = 0
       }
       // Keyed on the exit, not on `ok`: relay text in a read may carry an "error" key of its own.

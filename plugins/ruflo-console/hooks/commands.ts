@@ -23,6 +23,9 @@ export type Intent =
   | { kind: 'filter'; filter: 'all' | EventKind }
   | { kind: 'dump'; view: ViewId | null }
   | { kind: 'commands'; query: string }
+  | { kind: 'band'; arg: string }
+  | { kind: 'notices'; isClear: boolean }
+  | { kind: 'quiet'; arg: string }
   | { kind: 'unknown'; word: string }
 
 export function parseRuflo(args: string): Intent {
@@ -75,6 +78,12 @@ export function parseRuflo(args: string): Intent {
     case 'prev':
     case 'k':
       return { kind: 'select', by: -1 }
+    case 'band':
+      return { kind: 'band', arg: second }
+    case 'notices':
+      return { kind: 'notices', isClear: second === 'clear' }
+    case 'quiet':
+      return { kind: 'quiet', arg: second }
     case 'commands':
     case 'catalog':
       return { kind: 'commands', query: rest }
@@ -101,6 +110,11 @@ export const HELP = [
   '  /ruflo back | close | status',
   '  /ruflo dump <view>         a view as plain text, without the pane (for claude -p and scripts)',
   '  /ruflo commands [word]     browse the ruflo command catalog (ADR-406): every command, who owns it, how it runs',
+  '',
+  'The band above the prompt',
+  '  /ruflo band [auto|on|off|compact|full|reset]   show, hide or shrink the band for this session (compact = one row)',
+  '  /ruflo notices [clear]     the last ten announcements (approvals, alerts, a mission finishing, a long turn ending, Anatole blocking a call)',
+  '  /ruflo quiet [minutes|off] silence the band\'s notice row for a while; notices are still recorded',
   '',
   'Act (each change asks to confirm; /ruflo yes or /ruflo no answers without focus)',
   '  /ruflo palette [query]     the command palette (key p): spawn, claims, swarm, votes, workers, memory',

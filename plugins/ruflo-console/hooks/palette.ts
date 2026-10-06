@@ -17,6 +17,7 @@ import { settingsPalette } from './settings-palette'
 import { devPalette } from './devtools'
 import { LAB, labSpec, labWhy } from './mh-lab'
 import { PERF } from './perf'
+import { anatolePalette } from './anatole'
 import { SECURE, SECURE_KEYWORDS, SECURE_TEXT, secSpec, secTextSpec } from './secure'
 import { skillPaletteEntries } from './skills-lab'
 import { automateEntries } from './automate'
@@ -176,6 +177,7 @@ export function paletteEntries(state: State, nowMs: number): PaletteEntry[] {
   // Dev Tools: local reads run at once, the rest ask first; an entry with a field takes its text (see devtools.ts).
   out.push(...devPalette(state))
   out.push(...catalogPalette(state))
+  out.push(...anatolePalette(state))
   out.push(...missionPalette(state))
   out.push(...askPalette(state))
   out.push(...settingsPalette(state))

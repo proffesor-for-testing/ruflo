@@ -138,13 +138,37 @@ export type LoopActions = {
   manage: () => void
 }
 
+/** A `/loop` input: the arguments after the command name. */
+const LOOP_COMMAND = /^\/loop(?:\s+([\s\S]*))?$/
+
 export function loopActions(state: State, host: Host, runner: Runner): LoopActions {
   const cfg = loopsOf(state)
-  const say = (label: string, ok: boolean, detail: string) => {
-    mcOf(state).last = { label, ok, detail }
+  const say = (label: string, ok: boolean, detail: string, next?: string) => {
+    mcOf(state).last = { label, ok, detail, atMs: Date.now(), ...(next !== undefined && { next }) }
     host.invalidate()
   }
-  const send = (text: string): Promise<void> => (state.turnActive ? host.fillPrompt(text).then(() => undefined) : host.submitPrompt(text))
+  // `/loop` is a slash command, so it runs as one (`$.command.run`, as if typed). Submitting it as a prompt sends the model a message that
+  // merely looks like a command: no loop is created. Any other text (the manage ask) is a real prompt. Mid-turn the command can only wait in
+  // the prompt box, and the person is told so: nothing starts until they press Enter, and a silent fill looked like a click that did nothing.
+  const send = async (text: string): Promise<void> => {
+    if (state.turnActive) {
+      const isFilled = await host.fillPrompt(text)
+
+      return say(
+        isFilled ? 'waiting in your prompt box' : 'could not fill the prompt box',
+        isFilled,
+        isFilled ? 'Claude is mid-turn, so the command is in your prompt box.' : `the prompt box is not available (a dialog is open?); type it yourself: ${plain(text, 100)}`,
+        isFilled ? 'press Enter in the prompt box to start it' : 'close the dialog, then start it again',
+      )
+    }
+
+    const loop = LOOP_COMMAND.exec(text)
+
+    if (loop === null) return host.submitPrompt(text)
+
+    await host.runSlash('loop', loop[1] ?? '')
+    say('loop command sent', true, 'Sent as /loop: it starts a Claude Code turn, and Claude reports what it scheduled in the conversation.', 'watch the conversation; ☰ list / stop my sentries shows and stops it')
+  }
   const ask = (text: string, label: string, note: string): void =>
     runner.ask(
       {
@@ -158,7 +182,7 @@ export function loopActions(state: State, host: Host, runner: Runner): LoopActio
           try {
             await send(text)
           } catch (error) {
-            say('Claude did not take it', false, plain(error instanceof Error ? error.message : String(error), 140))
+            say('Claude did not take it', false, plain(error instanceof Error ? error.message : String(error), 140), 'check the command is offered here (/reload-plugins), then start it again')
           }
         },
       } satisfies ActionSpec,

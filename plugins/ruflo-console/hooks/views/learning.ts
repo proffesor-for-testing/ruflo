@@ -64,6 +64,11 @@ export function learningView(ctx: Ctx): RenderElement {
   const router = snap?.router ?? null
   const neural = snap?.neural ?? null
   const intel = live<Intelligence>(state.probes.get('intelligence'))
+  // The mod owns `route` only where no classic route hook runs it (ADR-404): with `owned` empty it routes nothing and records nothing here.
+  const owned = state.ruflo.snapshot?.owned
+  const classicOwnsRoute = owned !== undefined && !owned.includes('route')
+  const lastOutcomeMs = outcomes?.points[outcomes.points.length - 1]?.atMs
+  const staleOutcomes = lastOutcomeMs !== undefined && nowMs - lastOutcomeMs > 24 * 3_600_000
   const routerRows: RenderElement[] = [
     kv(
       ctx,
@@ -72,15 +77,17 @@ export function learningView(ctx: Ctx): RenderElement {
         ? `${route.agent} ${pct(route.confidence)} · ${route.matched ? 'keyword match' : 'no match, default'} · ${route.reason} (a prior, not a calibrated probability)`
         : state.ruflo.snapshot === null
           ? 'n/a — ruflo-mods not seated, so no in-process route'
-          : 'n/a — no prompt routed yet this session',
+          : classicOwnsRoute
+            ? 'n/a — in this project the classic hook-handler owns routing, so ruflo-mods stands down and records no picks (see /ruflo-mods)'
+            : 'n/a — no prompt routed yet this session',
     ),
     kv(
       ctx,
       'routed outcomes',
       outcomes === null || outcomes.total === 0
         ? 'n/a — no routing-outcomes.json'
-        : `${outcomes.successes}/${outcomes.total} succeeded (${pct(outcomes.successes / outcomes.total)} success rate, N=${outcomes.total}) · last ${ago(outcomes.points[outcomes.points.length - 1]?.atMs, nowMs)}`,
-      outcomes !== null && outcomes.total > 0 ? THEME.info : undefined,
+        : `${outcomes.successes}/${outcomes.total} succeeded (${pct(outcomes.successes / outcomes.total)} success rate, N=${outcomes.total}) · last ${ago(lastOutcomeMs, nowMs)}${staleOutcomes ? ' · nothing recorded since' : ''}`,
+      outcomes !== null && outcomes.total > 0 ? (staleOutcomes ? THEME.warn : THEME.info) : undefined,
     ),
     picture(ctx, 'curve', `running success rate over ${outcomes?.total ?? 0} outcomes`),
     text(ctx, 'running success rate of routed tasks, oldest left (router accuracy over N outcomes); new outcomes draw in', { dimColor: true }),

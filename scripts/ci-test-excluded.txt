@@ -5,6 +5,7 @@
 #   - the .mjs files use node:test: `node --test` runs them (all-plugins-smoke.yml and the plugin smokes).
 # A listed file that no longer exists fails the ratchet, so this list cannot go stale silently. Never add a file here to make a real
 # regression green: a file that vitest CAN run belongs in scripts/ci-test-baseline.txt (and that file may only shrink).
+
 plugins/ruflo-adr/tests/mod.test.ts
 plugins/ruflo-agentdb/tests/fold.test.ts
 plugins/ruflo-agentdb/tests/guard-scan.test.ts
@@ -76,3 +77,8 @@ scripts/__tests__/guard-label.test.mjs
 scripts/__tests__/mod-capability-matrix.test.mjs
 tests/check-guard-tool-names.test.mjs
 tests/check-status-forwarding.test.mjs
+plugins/ruflo-console/tests/result-display.test.ts
+plugins/ruflo-protector/tests/corpus.test.ts
+plugins/ruflo-protector/tests/mod.test.ts
+plugins/ruflo-protector/tests/rules.test.ts
+plugins/ruflo-mods/tests/protector.test.ts

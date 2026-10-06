@@ -3,6 +3,7 @@
  * ruflo marketplace clone's manifest. A fact a file does not hold is null and its read's reason says why; the views
  * draw that as n/a, missing or too large, never as zero.
  */
+import { readAnatole, type AnatoleFacts } from './anatole'
 import {
   enabledOf,
   parseActivity,
@@ -82,6 +83,8 @@ export type Snapshot = {
   missions: MissionObservation | null
   /** The ruflo-agentdb mod's own status file (ADR-445); null while the mod has not written one. */
   agentdbMod: AgentdbMod | null
+  /** Project Anatole's reported files (ADR-453): unauthenticated, bounded, shape-checked. */
+  anatole?: AnatoleFacts
   /** Every `.claude-flow/<short>-mod/status.json` the per-plugin mods wrote (ADR-446), bounded and shape-checked. */
   mods: ModsFacts
   changed: number
@@ -135,6 +138,7 @@ export async function readSnapshot(fs: ReaderFs, cache: ReadCache, cwd: string, 
     missions: parseMissions(text('missions')),
     agentdbMod: parseAgentdbMod(text('agentdbMod')),
     mods: await readMods(fs, cache, cwd),
+    anatole: await readAnatole(fs, cache, cwd),
     changed: disk.changed,
     readAtMs: nowMs,
   }
