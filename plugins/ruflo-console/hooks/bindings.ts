@@ -17,6 +17,7 @@ import { catalogActions } from './plugin-catalog'
 import { saveAllowed } from './remember'
 import { pluginNames, settingsActions } from './settings'
 import { catalogOf } from './plugin-catalog'
+import { wireAnatole } from './anatole'
 import { devtoolsActions } from './devtools'
 import { HARNESSES, harnessSpec, isAutoAccept, isLive, newSession, send, whyNotRun } from './harness'
 import { helpActions } from './help-actions'
@@ -73,6 +74,7 @@ export function actionsOf(state: State, host: Host, runner: Runner, steps: Steps
     host.invalidate()
   }
 
+  wireAnatole(state, host)
   const actions: Actions = {
     view: setView,
     remember: () => {

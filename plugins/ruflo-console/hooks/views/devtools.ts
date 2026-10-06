@@ -4,6 +4,7 @@ import type { DevField } from '../data/devtools'
 import { DEV, DEV_GROUPS, devSpec, type DevCost, type DevEntry, type DevGroup } from '../devtools'
 import { slot } from './attention'
 import { ago, button, clip, col, type Ctx, row, section, tagChip, text, THEME } from './common'
+import { frameResult } from './status-card'
 import { SANDBOX_GROUPS } from '../sandbox'
 import { spinAt } from '../spinner'
 import { sendResultRow } from './secure'
@@ -108,7 +109,7 @@ function resultRows(ctx: Ctx): RenderElement[] {
   if (result === null) {
     if (running === null) rows.push(text(ctx, ' ▸ press a row: a $0 read shows here at once; the rest ask first (y), their cost on the confirm row', { dimColor: true }))
 
-    return rows
+    return [frameResult(ctx, rows, running !== null ? 'run' : 'idle')]
   }
 
   rows.push(text(ctx, ` ${result.label}`, { bold: true, color: result.ok ? THEME.ok : THEME.bad }))
@@ -130,7 +131,7 @@ function resultRows(ctx: Ctx): RenderElement[] {
 
   rows.push(sendResultRow(ctx, 'dt-send'))
 
-  return slot(ctx, rows)
+  return slot(ctx, [frameResult(ctx, rows, result.ok ? 'ok' : 'bad')])
 }
 
 /**

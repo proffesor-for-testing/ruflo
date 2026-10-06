@@ -4,6 +4,7 @@ import { LAB, LAB_GROUPS, labSpec, PROMOTE_COMMAND, type LabCost, type LabEntry 
 import { slot } from './attention'
 import { sendResultRow } from './secure'
 import { ago, button, clip, type Ctx, row, rule, section, tagChip, text, THEME } from './common'
+import { frameResult } from './status-card'
 
 /** Result lines in view at once; j/k scroll the rest. */
 export const LAB_ROWS = 14
@@ -53,7 +54,7 @@ function resultRows(ctx: Ctx): RenderElement[] {
   if (result === null) {
     if (running === null) rows.push(text(ctx, ' ▸ run an entry: a $0 read shows here at once; the rest show here after you confirm (y)', { dimColor: true }))
 
-    return rows
+    return [frameResult(ctx, rows, running !== null ? 'run' : 'idle')]
   }
 
   rows.push(text(ctx, ` ${result.label}`, { bold: true, color: result.ok ? THEME.ok : THEME.bad }))
@@ -75,7 +76,7 @@ function resultRows(ctx: Ctx): RenderElement[] {
 
   rows.push(sendResultRow(ctx, 'lab-send'))
 
-  return slot(ctx, rows)
+  return slot(ctx, [frameResult(ctx, rows, result.ok ? 'ok' : 'bad')])
 }
 
 /**

@@ -12,6 +12,7 @@ import { emptyMemoryLab, type MemoryLabState } from './memory-lab'
 import { emptyVector, type VectorState } from './data/vector'
 import type { Snapshot } from './data/snapshot'
 import type { RufloRoute, RufloSnapshot } from '../types'
+import type { Notice } from './notices'
 
 export const PLUGIN_NAME = 'ruflo-console'
 export const PANE_ID = 'ruflo-console'
@@ -230,6 +231,15 @@ export type State = {
   commandNames: string[]
   /** True while the primary Claude session is running a turn (the band reports it each draw). */
   turnActive: boolean
+  /** Notices the band announced (notices.ts): the newest 30, a running id, and a time before which the notice row stays quiet. */
+  notices: Notice[]
+  noticeSeq: number
+  noticesQuietUntilMs: number
+  /** `/ruflo band`: the band's mode for this session over the plugin option (null = the option), and whether it shows one row. */
+  bandMode: 'auto' | 'on' | 'off' | null
+  bandCompact: boolean
+  /** When the person-facing turn began (the band shows how long Claude has been working), null between turns. */
+  turnStartedMs: number | null
   /** Collapsible sections the person flipped from their default (`<view>/<id>`): open ones closed, closed ones open. */
   sections: Set<string>
   /** What one-shot entry fields hold while typed (cleared on Enter), by field key. */
@@ -336,6 +346,12 @@ export function newState(raw: PluginOptions | undefined): State {
     navPick: null,
     navQuery: '',
     turnActive: false,
+    notices: [],
+    noticeSeq: 0,
+    noticesQuietUntilMs: 0,
+    bandMode: null,
+    bandCompact: false,
+    turnStartedMs: null,
     commandNames: [],
     allowed: new Map(),
     sections: new Set(),

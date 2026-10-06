@@ -368,25 +368,38 @@ export function confirmRow(ctx: Ctx): RenderElement | null {
     )
   }
 
-  return col(
-    ctx,
-    [
-      text(ctx, '▶ CONFIRM NEEDED — click Yes or press y', { bold: true, color: THEME.warn }),
-      text(ctx, `Confirm: ${askedBy(pending)}${pending.label.replace(/\?+$/, '')}?`, { bold: true, color: THEME.warn }),
+  // One bordered card in the warning colour: the person says yes to everything in it, so it reads as a unit, not as loose lines. Its border and
+  // padding take four columns, so the text inside is clipped to the narrower width.
+  const inner: Ctx = { ...ctx, columns: Math.max(20, ctx.columns - 4) }
+  const hasMoney = pending.note !== undefined && /money|models/i.test(pending.note)
+
+  return ctx.kit.Box({
+    key: 'confirm',
+    flexDirection: 'column',
+    borderStyle: 'round',
+    borderColor: THEME.warn,
+    paddingX: 1,
+    children: [
+      row(ctx, [ctx.kit.Text({ bold: true, color: THEME.warn, children: '▶ CONFIRM NEEDED' }), ctx.kit.Text({ dimColor: true, children: '  click Yes or press y' })]),
+      text(inner, '─'.repeat(inner.columns), { dimColor: true }),
+      text(inner, `Confirm: ${askedBy(pending)}${pending.label.replace(/\?+$/, '')}?`, { bold: true, color: THEME.warn }),
       // Wrapped, not clipped: the person says yes to the whole argv, so all of it shows (a JSON argument runs long).
       ctx.kit.Text({ dimColor: true, wrap: 'wrap', children: `runs: ${pending.shows ?? `ruflo ${pending.args.join(' ')}`}` }),
-      ...(pending.note !== undefined ? [text(ctx, pending.note, { bold: /money|models/i.test(pending.note), color: /money|models/i.test(pending.note) ? THEME.bad : THEME.warn })] : []),
-      row(ctx, [
-        button(ctx, 'confirm', 'Yes, run it (y)', ctx.act.confirm, { hotkey: 'y', primary: true }),
-        button(ctx, 'cancel', 'Cancel (n)', ctx.act.cancel, { hotkey: 'n' }),
-        // A low-risk ruflo action may be remembered: it is not asked again (Settings lists and forgets it).
-        ...(pending.rememberKey !== undefined ? [button(ctx, 'remember', `Always allow “${pending.rememberKey}”`, () => ctx.act.remember())] : []),
-        // An AI terminal turn (claude -p in plan mode, codex read-only, the budget cap) may be always accepted: Settings resets it.
-        ...(ctx.state.terminal.asked !== null && pending.label === ctx.state.terminal.asked.label && ctx.state.terminal.harness !== 'ruflo' ? [button(ctx, 'always', 'Always accept AI turns', () => ctx.act.settings.alwaysAccept())] : []),
-      ]),
+      ...(pending.note !== undefined ? [ctx.kit.Text({ wrap: 'wrap', bold: hasMoney, color: hasMoney ? THEME.bad : THEME.warn, children: `Effect: ${pending.note}` })] : []),
+      ctx.kit.Box({
+        flexDirection: 'row',
+        marginTop: 1,
+        children: [
+          button(ctx, 'confirm', 'Yes, run it (y)', ctx.act.confirm, { hotkey: 'y', primary: true }),
+          button(ctx, 'cancel', 'Cancel (n)', ctx.act.cancel, { hotkey: 'n' }),
+          // A low-risk ruflo action may be remembered: it is not asked again (Settings lists and forgets it).
+          ...(pending.rememberKey !== undefined ? [button(ctx, 'remember', `Always allow “${pending.rememberKey}”`, () => ctx.act.remember())] : []),
+          // An AI terminal turn (claude -p in plan mode, codex read-only, the budget cap) may be always accepted: Settings resets it.
+          ...(ctx.state.terminal.asked !== null && pending.label === ctx.state.terminal.asked.label && ctx.state.terminal.harness !== 'ruflo' ? [button(ctx, 'always', 'Always accept AI turns', () => ctx.act.settings.alwaysAccept())] : []),
+        ],
+      }),
     ],
-    'confirm',
-  )
+  })
 }
 
 /** Views that draw the confirm themselves, under the field it came from (the pane then does not draw it above the body). */

@@ -6,7 +6,6 @@
 import { HELP, parseRuflo, type Intent } from './commands'
 import { CATALOG_PATH, commandsText, FALLBACK, parseCatalog, type Catalog } from './data/catalog'
 import type { Controller } from './controller'
-import { median, p95 } from './controller'
 import { plain } from './data/parse'
 import { loadEvolve } from './evolve'
 import { labAnswer } from './mh-lab'
@@ -16,6 +15,7 @@ import { missionAnswer } from './mission-text'
 import { xruvAnswer } from './xruv'
 import { barText } from './views/bar'
 import { viewText } from './views/pane'
+import { bandReply, noticesReply, quietReply, median, p95 } from './notices'
 
 /** The engine's words when a registered command reaches it with no hook answering (Claude Code 2.1.287). */
 const NO_HOOK_ANSWERED = /registered \/ruflo but no command\.run hook answered/
@@ -173,6 +173,16 @@ export async function dispatch(control: Controller, state: State, args: string, 
 
       return { text: await dumpOf(control, state, view) }
     }
+    case 'band':
+      control.host.invalidate()
+
+      return { text: bandReply(state, intent.arg) }
+    case 'notices':
+      return { text: noticesReply(state, Date.now(), intent.isClear) }
+    case 'quiet':
+      control.host.invalidate()
+
+      return { text: quietReply(state, Date.now(), intent.arg) }
     case 'commands':
       return { text: commandsText(await loadCatalog(control), intent.query) }
     case 'unknown':

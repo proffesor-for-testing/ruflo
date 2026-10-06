@@ -288,4 +288,4 @@ export function secTextSpec(entry: SecText, text: string, state: State): ActionS
 }
 
 /** Is a lab result one of this view's? */
-export const isSecureResult = (id: string): boolean => SECURE.some(entry => entry.id === id) || SECURE_TEXT.some(entry => entry.id === id)
+export const isSecureResult = (id: string): boolean => id.startsWith('anatole-') || SECURE.some(entry => entry.id === id) || SECURE_TEXT.some(entry => entry.id === id)
