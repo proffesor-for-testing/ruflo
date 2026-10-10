@@ -39,15 +39,13 @@ describe('security scan code patterns: false positives seen on a real tree', () 
     expect(await findings({ 'copy.ts': 'export const label = "Memory + retrieval (vector) and private inference";\n' })).toEqual([]);
   });
 
-  it('does not report execFile, or child_process named in comments and messages, as command injection', async () => {
+  it('does not report child_process.execFile named in comments as command injection', async () => {
     expect(await findings({
       'discovery.ts': [
         '// TailscaleDiscovery only needs Node built-ins (`child_process.execFile`),',
         '/**',
         ' * No new dependency: shells out via `node:child_process.execFile`,',
         ' */',
-        "const { execFile } = require('child_process'); execFile('tailscale', ['status', '--json']);",
-        'throw new Error("child_process.exec must never be called by a blocked stub");',
       ].join('\n'),
     })).toEqual([]);
   });
@@ -57,6 +55,7 @@ describe('security scan code patterns: false positives seen on a real tree', () 
       'store.js': [
         '    sql += ` AND t.category_id = $${paramCount}`;',
         '    sql += ` ORDER BY text_score DESC LIMIT $${paramCount + 1}`;',
+        '    const q = `SELECT * FROM t WHERE id IN ($${params.length}, $${values.length + 1})`;',
       ].join('\n'),
     })).toEqual([]);
   });
@@ -112,22 +111,26 @@ describe('security scan code patterns: shapes the narrowing must not hide', () =
     }))).toEqual(['Eval Usage e.tsx:1', 'Eval Usage e.tsx:3', 'Eval Usage e.tsx:4', 'React XSS e.tsx:5']);
   });
 
-  it('reports execFile handed a shell, and exec through call/apply', async () => {
-    expect(types(await findings({
-      'f.ts': [
-        "require('child_process').execFile('sh', ['-c', userInput]);",
-        "require('child_process').execFile('echo', [userInput], { shell: true });",
-        "require('child_process').exec.call(null, userInput);",
-        "require('child_process').exec/*why*/(userInput);",
-        "require('child_process').execFile('git', ['status'], { shell: false });",
-        "require('child_process').execFile('/bin/sh', ['-c', input]);",
-        "require('child_process').execFile.call(null, 'sh', ['-c', input]);",
-        "require('child_process').execFile('echo', [input], {'shell': true});",
-        "require('child_process').exec?.(input);",
-        "require('child_process')['exec'](input);",
-        "const cp = require('child_process'); cp.exec(input); cp.execFile('git', ['status']);",
-      ].join('\n'),
-    }))).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(n => `Command Injection f.ts:${n}`).sort());
+  it('reports every exec use the old rule reported, execFile included, as command injection', async () => {
+    const lines = [
+      "require('child_process').execFile('sh', ['-c', userInput]);",
+      "require('child_process').execFile('echo', [userInput], { shell: true });",
+      "require('child_process').exec.call(null, userInput);",
+      "require('child_process').exec/*why*/(userInput);",
+      "require('child_process').execFile('/usr/bin/env', ['sh', '-c', userCmd]);",
+      "require('child_process').execFile('node', ['-e', userCode]);",
+      "require('child_process').execFileSync('bash.exe', ['-c', userCmd]);",
+      "require('child_process').exec?.(input);",
+      "require('child_process')['exec'](input);",
+      "module.exports = require('child_process').exec;",
+      "(require('child_process').exec as any)(cmd);",
+      "const { exec } = require('child_process'); const run = promisify(exec);",
+      "const { exec, execFile } = require('child_process'); register(exec, 1); execFile('git', ['status']);",
+      "const {exec} = require('child_process'); Reflect.apply(exec, null, [input]);",
+      "require('child_process').execFile('git', ['status'], (a = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx') => a);",
+    ];
+    expect(types(await findings({ 'f.ts': lines.join('\n') })))
+      .toEqual(lines.map((_, i) => `Command Injection f.ts:${i + 1}`).sort());
   });
 
   it('keeps a /* inside a regex or JSX text from hiding the lines after it', async () => {
@@ -178,19 +181,89 @@ describe('security scan code patterns: shapes the narrowing must not hide', () =
     }))).toEqual(['SQL Injection k.ts:1', 'SQL Injection k.ts:2', 'SQL Injection k.ts:3']);
   });
 
-  it('reports execFile given an options variable, a chained argv, or exec passed around as a value', async () => {
+  it('keeps a backtick misread in a regex or JSX from hiding later lines through a template /*', async () => {
     expect(types(await findings({
-      'm.ts': [
-        "require('child_process').execFile('echo', [input], options);",
-        "require('child_process').execFile('git', ['status'].concat(input));",
-        "module.exports = require('child_process').exec;",
-        "require('child_process').execFile('git', ['status'], (err, out) => done(out));",
-        "require('child_process').execFile('git', ['status'], (options));",
-        "require('child_process').execFile('git', ['status'], { ...options });",
-        "const run = require('child_process').exec || fallback;",
-        "const cp = require('child_process'); const run = cp.exec; cp.execFile('git', ['status']);",
+      'n.tsx': [
+        'const Q = /[`]/;',
+        'const t = `',
+        '/* text',
+        '`;',
+        'eval(userInput);',
+        "require('child_process').exec(userCmd);",
+        "const glob = '**/*.ts';",
+        'fetch(`https://api.example.com/${id}`); eval(userInput);',
       ].join('\n'),
-    }))).toEqual([1, 2, 3, 5, 6, 7, 8].map(n => `Command Injection m.ts:${n}`));
+    }))).toEqual(['Command Injection n.tsx:6', 'Eval Usage n.tsx:5', 'Eval Usage n.tsx:8']);
+  });
+
+  it('reports a counter placeholder that is not where SQL takes a value, or not param-named', async () => {
+    expect(types(await findings({
+      'p.ts': [
+        'const sql = `SELECT x$${paramCount} FROM t`;',
+        'const sql = `SELECT * FROM t WHERE id = $${paramCount}abc`;',
+        'const sql = `SELECT * FROM t OFFSET $${pageNum}`;',
+        'const sql = `SELECT * FROM t WHERE id = $${userIdx}`;',
+        'const sql = `UPDATE t SET a = $${req.body.length}`;',
+      ].join('\n'),
+    }))).toEqual([1, 2, 3, 4, 5].map(n => `SQL Injection p.ts:${n}`));
+  });
+
+  it('scans report-named assets when their marker file is absent', async () => {
+    expect(types(await findings({
+      'coverage/prettify.js': 'el.innerHTML = html;\n',
+      'playwright-report/trace/view.js': 'eval(x);\n',
+    }))).toEqual(['Eval Usage playwright-report/trace/view.js:1', 'innerHTML coverage/prettify.js:1']);
+  });
+
+  it('reads a regex literal as code, so a // or /* or backtick inside it hides nothing', async () => {
+    expect(types(await findings({
+      'r.ts': [
+        'const r = /[//]/; eval(input);',
+        'const s = /[/*]/; eval(input);',
+        'const Q = /[`]/;',
+        'const t = `',
+        '/*',
+        '* ${eval(input)}',
+        '`;',
+        'const half = a / b; eval(input); // eval(commented)',
+      ].join('\n'),
+    }))).toEqual(['Eval Usage r.ts:1', 'Eval Usage r.ts:2', 'Eval Usage r.ts:6', 'Eval Usage r.ts:8']);
+  });
+
+  it('keeps a URL after a backtick misread in JSX text from blanking the rest of its line', async () => {
+    expect(types(await findings({
+      'k.tsx': 'const v = <kbd>`</kbd>;\nfetch(`https://api.example.com/${id}`); eval(input);\n',
+    }))).toEqual(['Eval Usage k.tsx:2']);
+  });
+
+  it('reports a counter placeholder inside double-quoted SQL text, or after an escaped backtick in quotes', async () => {
+    expect(types(await findings({
+      'q.ts': [
+        'const sql = `SELECT "x = $${paramCount} y" FROM t`;',
+        "const sql = `SELECT 'x \\` = $${paramCount} y' FROM t`;",
+        'const sql = `SELECT * FROM t WHERE id = $${userargs.length}`;',
+      ].join('\n'),
+    }))).toEqual(['SQL Injection q.ts:1', 'SQL Injection q.ts:2', 'SQL Injection q.ts:3']);
+  });
+
+  it('stays linear on lines of comment openers, placeholders and regex starts', async () => {
+    const started = Date.now();
+    await findings({
+      'long.js': [
+        'x; /* */'.repeat(16_000),
+        'const sql = `SELECT ' + Array(8_000).fill('$${paramCount}').join(', ') + '`;',
+        '(/'.repeat(16_000),
+        '[/'.repeat(16_000),
+        'x / '.repeat(64_000) + 'z',
+      ].join('\n'),
+    });
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
+  it('scans many unclosed line-start comment openers in linear time', async () => {
+    const started = Date.now();
+    await findings({ 'open.js': '/* x\n'.repeat(40_000) + 'eval(input);\n' });
+    expect(Date.now() - started).toBeLessThan(1_000);
   });
 
   it('scans a long minified line in linear time', async () => {
