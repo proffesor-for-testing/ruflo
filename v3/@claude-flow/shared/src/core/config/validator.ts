@@ -42,12 +42,20 @@ export interface ValidationError {
 /**
  * Convert Zod error to validation errors
  */
-function zodErrorToValidationErrors(error: ZodError): ValidationError[] {
+function zodErrorToValidationErrors(error: Pick<ZodError, 'issues'>): ValidationError[] {
   return error.issues.map((e) => ({
-    path: e.path.join('.'),
+    path: e.path.map(String).join('.'),
     message: e.message,
     code: e.code,
   }));
+}
+
+function isZodErrorLike(error: unknown): error is Pick<ZodError, 'issues'> {
+  return (
+    error instanceof Error &&
+    error.name === 'ZodError' &&
+    Array.isArray((error as { issues?: unknown }).issues)
+  );
 }
 
 /**
@@ -65,7 +73,9 @@ function validate<TInput, TOutput>(
       data: parsed,
     };
   } catch (error) {
-    if (error instanceof z.ZodError) {
+    // Callers may pass a schema built with another zod copy (e.g. zod 3),
+    // whose ZodError is not an instance of this one. Match on shape.
+    if (error instanceof z.ZodError || isZodErrorLike(error)) {
       return {
         success: false,
         errors: zodErrorToValidationErrors(error),

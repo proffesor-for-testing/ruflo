@@ -44,6 +44,35 @@ describe('config validator under zod 4', () => {
     });
   });
 
+  it('treats a ZodError from another zod copy as a validation failure', () => {
+    // A caller-supplied schema built with a different zod (e.g. zod 3) throws
+    // a ZodError that is not an instance of this package's z.ZodError.
+    const foreign = {
+      parse() {
+        throw Object.assign(new Error('foreign'), {
+          name: 'ZodError',
+          issues: [{ path: ['x'], message: 'Expected string', code: 'invalid_type' }],
+        });
+      },
+    };
+    expect(ConfigValidator.isValid(foreign as never, 42)).toBe(false);
+  });
+
+  it('reports symbol path segments instead of throwing', () => {
+    const sym = Symbol('meta');
+    const foreign = {
+      parse() {
+        throw Object.assign(new Error('foreign'), {
+          name: 'ZodError',
+          issues: [{ path: ['metadata', sym], message: 'bad key', code: 'invalid_key' }],
+        });
+      },
+    };
+    expect(() => ConfigValidator.validateOrThrow(foreign as never, {}, 'agent')).toThrow(
+      /- metadata\.Symbol\(meta\): bad key/,
+    );
+  });
+
   it('validateAgentOrThrow reports the invalid fields, not a TypeError', () => {
     expect(AgentConfigSchema.safeParse({}).success).toBe(false);
     expect(() => ConfigValidator.validateAgentOrThrow({ id: '' })).toThrow(

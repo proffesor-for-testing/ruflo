@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { validateAgentSpawn } from '../src/mcp-tools/validate-input.js';
+import { validateAgentSpawn, isUnknownAgentTypeIssue } from '../src/mcp-tools/validate-input.js';
 
 describe('validateAgentSpawn (#1567)', () => {
   it('accepts a built-in agent type like "tester"', async () => {
@@ -25,6 +25,30 @@ describe('validateAgentSpawn (#1567)', () => {
     const r = await validateAgentSpawn({ agentType: 'memory-specialist', agentId: 'mem-1' });
     expect(r.valid).toBe(true);
     expect(r.errors).toEqual([]);
+  });
+
+  it('accepts an agent type that is genuinely outside the enum', async () => {
+    // "memory-specialist" above IS in AgentTypeSchema, so it never reached the
+    // enum-suppression branch.
+    const r = await validateAgentSpawn({ agentType: 'qe-flaky-hunter', agentId: 'qe-1' });
+    expect(r.errors).toEqual([]);
+    expect(r.valid).toBe(true);
+  });
+
+  // validateAgentSpawn loads @claude-flow/security dynamically and falls back
+  // to inline checks when it cannot resolve it (as under pnpm's strict
+  // layout here), so the cases above may never reach the Zod branch. Drive
+  // the suppression rule with real SpawnAgentSchema issues instead.
+  it('ignores only the unknown-agent-type issue from SpawnAgentSchema', async () => {
+    const { SpawnAgentSchema } = await import('@claude-flow/security');
+    const custom = SpawnAgentSchema.safeParse({ type: 'qe-flaky-hunter', id: 'qe-1' });
+    expect(custom.success).toBe(false);
+    expect(custom.error!.issues.length).toBeGreaterThan(0);
+    expect(custom.error!.issues.every(isUnknownAgentTypeIssue)).toBe(true);
+
+    const badId = SpawnAgentSchema.safeParse({ type: 'tester', id: 'has spaces' });
+    expect(badId.success).toBe(false);
+    expect(badId.error!.issues.some(isUnknownAgentTypeIssue)).toBe(false);
   });
 
   it('still rejects an agentId with invalid characters', async () => {

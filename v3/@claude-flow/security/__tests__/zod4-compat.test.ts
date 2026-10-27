@@ -17,6 +17,7 @@ import {
   IdentifierSchema,
   TaskInputSchema,
   SpawnAgentSchema,
+  UUIDSchema,
 } from '../src/input-validator.js';
 
 describe('input-validator under zod 4', () => {
@@ -58,6 +59,14 @@ describe('input-validator under zod 4', () => {
       .toBe('Invalid UUID format');
     expect(z.string().regex(/^a$/).safeParse('b').error?.issues[0]?.message)
       .toBe('Invalid string format');
+  });
+
+  it('keeps the zod 3 UUID acceptance (8-4-4-4-12 hex, any version nibble)', () => {
+    expect(UUIDSchema.safeParse('00000000-0000-0000-0000-000000000001').success).toBe(true);
+    expect(UUIDSchema.safeParse('550e8400-e29b-41d4-a716-446655440000').success).toBe(true);
+    const bad = UUIDSchema.safeParse('550e8400e29b41d4a716446655440000');
+    expect(bad.success).toBe(false);
+    expect(bad.error?.issues[0]?.message).toBe('Invalid UUID format');
   });
 
   it('accepts string-keyed metadata records', () => {

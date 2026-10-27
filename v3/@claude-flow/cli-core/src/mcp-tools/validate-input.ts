@@ -334,7 +334,7 @@ export async function validateAgentSpawn(input: Record<string, unknown>): Promis
     } catch (zodErr: any) {
       if (zodErr.issues) {
         for (const issue of zodErr.issues) {
-          if (issue.code === 'invalid_enum_value') continue;
+          if (isUnknownAgentTypeIssue(issue)) continue;
           errors.push(`${issue.path.join('.')}: ${issue.message}`);
         }
       }
@@ -342,4 +342,14 @@ export async function validateAgentSpawn(input: Record<string, unknown>): Promis
   }
 
   return { valid: errors.length === 0, errors };
+}
+
+/**
+ * True for the issue SpawnAgentSchema raises when `type` is outside its
+ * built-in enum. Custom agent types are allowed, so this issue is ignored.
+ * zod 3 reports it as `invalid_enum_value`; zod 4 as `invalid_value`.
+ */
+export function isUnknownAgentTypeIssue(issue: { code?: unknown; path?: unknown[] }): boolean {
+  if (issue.code === 'invalid_enum_value') return true;
+  return issue.code === 'invalid_value' && Array.isArray(issue.path) && issue.path[0] === 'type';
 }
