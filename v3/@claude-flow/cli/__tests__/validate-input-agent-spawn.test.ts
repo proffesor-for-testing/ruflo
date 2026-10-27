@@ -41,14 +41,28 @@ describe('validateAgentSpawn (#1567)', () => {
   // the suppression rule with real SpawnAgentSchema issues instead.
   it('ignores only the unknown-agent-type issue from SpawnAgentSchema', async () => {
     const { SpawnAgentSchema } = await import('@claude-flow/security');
-    const custom = SpawnAgentSchema.safeParse({ type: 'qe-flaky-hunter', id: 'qe-1' });
-    expect(custom.success).toBe(false);
-    expect(custom.error!.issues.length).toBeGreaterThan(0);
-    expect(custom.error!.issues.every(isUnknownAgentTypeIssue)).toBe(true);
+    const issuesFor = (type: unknown, id = 'qe-1') => {
+      const r = SpawnAgentSchema.safeParse({ type, id });
+      expect(r.success).toBe(false);
+      return r.error!.issues;
+    };
 
-    const badId = SpawnAgentSchema.safeParse({ type: 'tester', id: 'has spaces' });
-    expect(badId.success).toBe(false);
-    expect(badId.error!.issues.some(isUnknownAgentTypeIssue)).toBe(false);
+    const custom = issuesFor('qe-flaky-hunter');
+    expect(custom.length).toBeGreaterThan(0);
+    expect(custom.every((i) => isUnknownAgentTypeIssue(i, 'qe-flaky-hunter'))).toBe(true);
+
+    // A missing or non-string type must still be reported. zod 4 raises
+    // `invalid_value` at ['type'] for these too (zod 3: `invalid_type`).
+    for (const missing of [undefined, null, 0, false]) {
+      expect(issuesFor(missing).some((i) => isUnknownAgentTypeIssue(i, missing))).toBe(false);
+    }
+
+    const badId = issuesFor('tester', 'has spaces');
+    expect(badId.some((i) => isUnknownAgentTypeIssue(i, 'tester'))).toBe(false);
+
+    // Only the top-level `type` field is exempt.
+    expect(isUnknownAgentTypeIssue({ code: 'invalid_value', path: ['type', 'nested'] }, 'x')).toBe(false);
+    expect(isUnknownAgentTypeIssue({ code: 'invalid_enum_value', path: ['priority'] }, 'x')).toBe(false);
   });
 
   it('still rejects an agentId with invalid characters', async () => {

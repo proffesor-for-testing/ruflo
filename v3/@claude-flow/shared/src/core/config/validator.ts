@@ -51,10 +51,19 @@ function zodErrorToValidationErrors(error: Pick<ZodError, 'issues'>): Validation
 }
 
 function isZodErrorLike(error: unknown): error is Pick<ZodError, 'issues'> {
+  if (!(error instanceof Error) || error.name !== 'ZodError') return false;
+  const issues = (error as { issues?: unknown }).issues;
   return (
-    error instanceof Error &&
-    error.name === 'ZodError' &&
-    Array.isArray((error as { issues?: unknown }).issues)
+    Array.isArray(issues) &&
+    issues.length > 0 &&
+    issues.every(
+      (i) =>
+        i !== null &&
+        typeof i === 'object' &&
+        Array.isArray((i as { path?: unknown }).path) &&
+        typeof (i as { message?: unknown }).message === 'string' &&
+        typeof (i as { code?: unknown }).code === 'string',
+    )
   );
 }
 

@@ -58,6 +58,15 @@ describe('config validator under zod 4', () => {
     expect(ConfigValidator.isValid(foreign as never, 42)).toBe(false);
   });
 
+  it('does not mistake an operational error named ZodError for a validation failure', () => {
+    const impostor = {
+      parse() {
+        throw Object.assign(new Error('database failed'), { name: 'ZodError', issues: [] });
+      },
+    };
+    expect(() => ConfigValidator.isValid(impostor as never, {})).toThrow('database failed');
+  });
+
   it('reports symbol path segments instead of throwing', () => {
     const sym = Symbol('meta');
     const foreign = {
